@@ -21,6 +21,9 @@ jobs:
       - name: Signatur-Schlüssel aus Secret
         run: |
           if [ -n "$KS" ]; then echo "$KS" | base64 -d > "$RUNNER_TEMP/tino.jks"; echo "KEYSTORE_FILE=$RUNNER_TEMP/tino.jks" >> $GITHUB_ENV; fi
+      - name: Secrets prüfen
+        run: |
+          echo "KEYSTORE_B64: ${#KS} Zeichen"; echo "KEYSTORE_PASS: ${#KEYSTORE_PASS} Zeichen"; echo "UPDATE_TOKEN: ${#UT} Zeichen"
       - name: Versionsnummer
         run: echo "VC=$((GITHUB_RUN_NUMBER + 1))" >> $GITHUB_ENV
       - name: APK bauen
