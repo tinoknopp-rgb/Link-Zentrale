@@ -1,0 +1,42 @@
+name: App bauen
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      KS: ${{ secrets.KEYSTORE_B64 }}
+      KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+      KEY_ALIAS: tino
+      UT: ${{ secrets.UPDATE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Signatur-Schlüssel aus Secret
+        run: |
+          if [ -n "$KS" ]; then echo "$KS" | base64 -d > "$RUNNER_TEMP/tino.jks"; echo "KEYSTORE_FILE=$RUNNER_TEMP/tino.jks" >> $GITHUB_ENV; fi
+      - name: Versionsnummer
+        run: echo "VC=$((GITHUB_RUN_NUMBER + 1))" >> $GITHUB_ENV
+      - name: APK bauen
+        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon --stacktrace && cp app/build/outputs/apk/debug/app-debug.apk Link-Zentrale.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Link-Zentrale-APK
+          path: Link-Zentrale.apk
+      - name: Als Update veröffentlichen (öffentliches Update-Repo)
+        if: github.ref == 'refs/heads/main' && env.KS != '' && env.UT != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: tinoknopp-rgb/HandyPutz-Updates
+          token: ${{ secrets.UPDATE_TOKEN }}
+          tag_name: link-v1.${{ env.VC }}
+          name: Link-Zentrale 1.${{ env.VC }}
+          body: Neue Version der Link-Zentrale
+          files: Link-Zentrale.apk
+          make_latest: false
