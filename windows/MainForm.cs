@@ -105,6 +105,10 @@ public class MainForm : Form
         btnReviews.ForeColor = Color.White;
         btnReviews.Click += (_, _) => PickReviews();
         RenderLinks();
+        var timer = new System.Windows.Forms.Timer { Interval = 15 * 60_000 };
+        timer.Tick += async (_, _) => await CheckUpdate();
+        timer.Start();
+        Activated += async (_, _) => { if (update == null) await CheckUpdate(); };
         Load += async (_, _) =>
         {
             Gh.Token = Store.Token;
@@ -324,8 +328,26 @@ public class MainForm : Form
             await CountBadges();
         }
         catch { SetStatus("Offline – letzter Stand"); }
-        try { update = await Gh.SelfUpdate(); } catch { update = null; }
-        if (update != null) { btnUpdate.Text = $"⬆ {update.Name}"; btnUpdate.Left = W - 30 - btnUpdate.Width; btnUpdate.Visible = true; }
+        await CheckUpdate();
+    }
+
+    int askedFor = 0;
+
+    /// <summary>Nach neuer Version schauen – beim Start, alle 15 Minuten und beim Zurückholen des Fensters</summary>
+    async Task CheckUpdate()
+    {
+        AppUpdate? u = null;
+        try { u = await Gh.SelfUpdate(); } catch { }
+        if (u == null) return;
+        update = u;
+        btnUpdate.Text = Tr.T("⬆ Jetzt aktualisieren") + $" ({u.Name.Replace("Link-Zentrale ", "")})";
+        btnUpdate.Left = W - 30 - btnUpdate.Width; btnUpdate.Visible = true; btnUpdate.BringToFront();
+        SetStatus($"⬆ Neue Version {u.Name}");
+        if (askedFor != u.Code)
+        {
+            askedFor = u.Code;
+            await DoUpdate();   // fragt einmal pro Version: „jetzt installieren?“
+        }
     }
 
     async Task DoUpdate()

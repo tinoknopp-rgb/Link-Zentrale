@@ -174,6 +174,15 @@ class WatchWorker(c: Context, p: WorkerParameters) : CoroutineWorker(c, p) {
                 sp.edit().putLong("buildfail_${i.project}", i.buildId).apply()
             }
         }
+        // neue Version der Link-Zentrale → Hinweis, Antippen öffnet die App mit „Jetzt aktualisieren“
+        try {
+            Gh.selfUpdate(versionCode(c))?.let { u ->
+                if (sp.getInt("upd_notified", 0) != u.code) {
+                    Notify.show(c, 4711, "⬆ Neue Version der Link-Zentrale", u.name + " – " + tr("Tippe zum Installieren"), null)
+                    sp.edit().putInt("upd_notified", u.code).apply()
+                }
+            }
+        } catch (_: Exception) { }
         LinkWidget.updateAll(c)
         return Result.success()
     }

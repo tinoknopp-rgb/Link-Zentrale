@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -226,9 +227,23 @@ class MainActivity : ComponentActivity() {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 7)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFF8FD3FF), secondary = Color(0xFFFF5C8A), background = Color(0xFF0A2540), surface = Color(0xFF11325A))) {
-                Surface(Modifier.fillMaxSize(), color = Color(0xFF0A2540)) { Screen() }
+                Surface(Modifier.fillMaxSize(), color = Color(0xFF0A2540)) {
+                    Box(Modifier.fillMaxSize()) {
+                        Screen()
+                        // Update-Hinweis auf JEDER Seite (unten eingeblendet)
+                        UpdateBanner(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp))
+                    }
+                    // während die App offen ist: alle 15 Minuten nach Updates schauen
+                    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(15 * 60_000L); Upd.check(this@MainActivity) } }
+                }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // beim Zurückkehren in die App sofort prüfen
+        lifecycleScope.launch { Upd.check(this@MainActivity) }
     }
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handle(intent) }
@@ -259,7 +274,6 @@ fun Screen() {
     var links by remember { mutableStateOf(Store.cache(ctx)) }
     var own by remember { mutableStateOf(Store.own(ctx)) }
     var status by remember { mutableStateOf("Aktualisiere …") }
-    var update by remember { mutableStateOf<Gh.Update?>(null) }
     var add by remember { mutableStateOf(false) }
     var tools by remember { mutableStateOf(false) }
     var reviews by remember { mutableStateOf<Pair<String, String>?>(null) }   // Projekt, Repo
@@ -293,7 +307,7 @@ fun Screen() {
                 val l = withContext(Dispatchers.IO) { Gh.downloads() }
                 links = l; Store.setCache(ctx, l); status = "✅ Aktuell"; countBadges()
             } catch (e: Exception) { status = "Offline – letzter Stand" }
-            update = try { withContext(Dispatchers.IO) { Gh.selfUpdate(versionCode(ctx)) } } catch (_: Exception) { null }
+            Upd.check(ctx)
         }
     }
     LaunchedEffect(Unit) { refresh() }   // bei jedem Öffnen: Links + App-Update prüfen
@@ -312,27 +326,6 @@ fun Screen() {
                 TextButton(onClick = { L.set(ctx, !L.en) }, contentPadding = PaddingValues(4.dp)) { androidx.compose.material3.Text(if (L.en) "🇬🇧" else "🇩🇪", fontSize = 22.sp) }
                 TextButton(onClick = { feedback = true }, contentPadding = PaddingValues(4.dp)) { Text("⭐", fontSize = 22.sp) }
                 TextButton(onClick = { refresh() }) { Text("↻", fontSize = 26.sp, color = Color(0xFF8FD3FF)) }
-            }
-            update?.let { u ->
-                Card(Modifier.fillMaxWidth().padding(vertical = 10.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFF5C8A))) {
-                    Column(Modifier.padding(14.dp)) {
-                        Text("⬆ Neue Version ${u.name}", color = Color.White, fontWeight = FontWeight.Bold)
-                        Button(onClick = {
-                            if (Build.VERSION.SDK_INT >= 26 && !ctx.packageManager.canRequestPackageInstalls()) {
-                                toast(ctx, "Bitte „Unbekannte Apps installieren“ erlauben")
-                                ctx.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + ctx.packageName)))
-                            } else scope.launch {
-                                status = "Lade Update …"
-                                try {
-                                    val f = withContext(Dispatchers.IO) { Gh.download(ctx, u.url) }
-                                    val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f)
-                                    ctx.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
-                                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-                                } catch (e: Exception) { status = "Update fehlgeschlagen: ${e.message}" }
-                            }
-                        }, colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF0A2540))) { Text("Jetzt aktualisieren") }
-                    }
-                }
             }
             Text("GitHub", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
             GITHUB.chunked(2).forEach { row ->
@@ -476,6 +469,55 @@ fun LinkCard(l: Link, onDelete: () -> Unit) {
             Row {
                 TextButton(onClick = { open(ctx, l.url) }) { Text("Öffnen", color = Color(0xFF8FD3FF)) }
                 if (l.own) TextButton(onClick = onDelete) { Text("🗑 Löschen", color = Color(0xFFFF5C8A)) }
+            }
+        }
+    }
+}
+
+// ======================= Selbst-Update (überall sichtbar) =======================
+
+object Upd {
+    var update by mutableStateOf<Gh.Update?>(null)
+    var status by mutableStateOf("")
+
+    suspend fun check(ctx: Context) {
+        val u = try { withContext(Dispatchers.IO) { Gh.selfUpdate(versionCode(ctx)) } } catch (_: Exception) { null }
+        if (u != null || update == null) update = u
+    }
+
+    suspend fun install(ctx: Context) {
+        val u = update ?: return
+        if (Build.VERSION.SDK_INT >= 26 && !ctx.packageManager.canRequestPackageInstalls()) {
+            toast(ctx, "Bitte „Unbekannte Apps installieren“ erlauben")
+            ctx.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + ctx.packageName)))
+            return
+        }
+        status = "Lade Update …"
+        try {
+            val f = withContext(Dispatchers.IO) { Gh.download(ctx, u.url) }
+            val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f)
+            ctx.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
+            status = ""
+        } catch (e: Exception) { status = "Update fehlgeschlagen: ${e.message}" }
+    }
+}
+
+@Composable
+fun UpdateBanner(modifier: Modifier = Modifier) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var later by remember { mutableStateOf(0) }
+    val u = Upd.update ?: return
+    if (later == u.code) return
+    Card(modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFFF5C8A)), elevation = CardDefaults.cardElevation(8.dp)) {
+        Column(Modifier.padding(14.dp)) {
+            Text("⬆ Neue Version ${u.name}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            if (Upd.status.isNotBlank()) Text(Upd.status, color = Color.White, fontSize = 13.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                Button(onClick = { scope.launch { Upd.install(ctx) } }, modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF0A2540))) { Text("Jetzt aktualisieren", fontWeight = FontWeight.Bold) }
+                OutlinedButton(onClick = { later = u.code }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Später", color = Color.White) }
             }
         }
     }

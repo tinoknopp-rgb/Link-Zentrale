@@ -206,5 +206,10 @@
 "Datei(en): ": "file(s): ",
 "Gleicher Name = neue Version, die alte bleibt im Verlauf.": "Same name = new version, the old one stays in the history.",
 "Hochladen fehlgeschlagen": "Upload failed",
-"ist zu groß (max. 50 MB)": "is too large (max. 50 MB)"
+"ist zu groß (max. 50 MB)": "is too large (max. 50 MB)",
+"Später": "Later",
+"Tippe zum Installieren": "Tap to install",
+"⬆ Neue Version der Link-Zentrale": "⬆ New Link-Zentrale version",
+"Neue Version verfügbar – jetzt installieren?": "New version available – install now?",
+"⬆ Jetzt aktualisieren": "⬆ Update now"
 }
