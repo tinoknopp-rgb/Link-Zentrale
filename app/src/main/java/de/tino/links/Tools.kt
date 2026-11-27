@@ -133,6 +133,60 @@ object Api {
         val a = JSONObject(rel.body).optJSONArray("assets") ?: return emptyList()
         return (0 until a.length()).map { a.getJSONObject(it).getString("name") }
     }
+    // ---------- Builds ----------
+    data class Run(val id: Long, val title: String, val status: String, val url: String)
+
+    fun runs(r: Repo): List<Run> {
+        val t = call("GET", "/repos/${r.full}/actions/runs?per_page=8")
+        if (t.code !in 200..299) return emptyList()
+        val a = JSONObject(t.body).getJSONArray("workflow_runs")
+        return (0 until a.length()).map {
+            val o = a.getJSONObject(it)
+            val st = when (o.optString("conclusion")) {
+                "success" -> "✅"; "failure" -> "❌"; "cancelled" -> "⏹"; "skipped" -> "⏭"
+                else -> if (o.optString("status") == "completed") "•" else "⏳"
+            }
+            Run(o.getLong("id"), "#${o.optInt("run_number")} ${o.optString("display_title").take(40)}", st, o.getString("html_url"))
+        }
+    }
+
+    fun build(r: Repo): String {
+        val a = JSONObject(need(call("GET", "/repos/${r.full}/actions/workflows"), "Workflows lesen").body).getJSONArray("workflows")
+        if (a.length() == 0) throw Exception("${r.name} hat keinen Build (Workflow)")
+        val wf = a.getJSONObject(0)
+        need(call("POST", "/repos/${r.full}/actions/workflows/${wf.getLong("id")}/dispatches", JSONObject().put("ref", r.branch)), "Build starten")
+        return "🚀 Build „${wf.optString("name")}“ in ${r.name} gestartet"
+    }
+
+    fun rerun(r: Repo, run: Run): String { need(call("POST", "/repos/${r.full}/actions/runs/${run.id}/rerun"), "Wiederholen"); return "🔁 ${run.title} wird wiederholt" }
+    fun cancel(r: Repo, run: Run): String { need(call("POST", "/repos/${r.full}/actions/runs/${run.id}/cancel"), "Abbrechen"); return "⏹ ${run.title} abgebrochen" }
+
+    // ---------- Releases ----------
+    data class Rel(val id: Long, val tag: String, val name: String, val latest: Boolean, val files: List<String>)
+
+    fun releases(r: Repo): List<Rel> {
+        val t = call("GET", "/repos/${r.full}/releases?per_page=30")
+        if (t.code !in 200..299) return emptyList()
+        val latestId = call("GET", "/repos/${r.full}/releases/latest").let { if (it.code in 200..299) JSONObject(it.body).optLong("id") else -1L }
+        val a = JSONArray(t.body)
+        return (0 until a.length()).map {
+            val o = a.getJSONObject(it)
+            val as_ = o.optJSONArray("assets") ?: JSONArray()
+            Rel(o.getLong("id"), o.getString("tag_name"), o.optString("name").ifBlank { o.getString("tag_name") }, o.getLong("id") == latestId,
+                (0 until as_.length()).map { k -> as_.getJSONObject(k).getString("name") })
+        }
+    }
+
+    fun makeLatest(r: Repo, rel: Rel): String {
+        need(call("PATCH", "/repos/${r.full}/releases/${rel.id}", JSONObject().put("make_latest", "true")), "Als neueste markieren")
+        return "⭐ ${rel.name} ist jetzt die neueste Version"
+    }
+
+    fun deleteRelease(r: Repo, rel: Rel): String {
+        need(call("DELETE", "/repos/${r.full}/releases/${rel.id}"), "Version löschen")
+        call("DELETE", "/repos/${r.full}/git/refs/tags/${rel.tag}")
+        return "🗑 ${rel.name} gelöscht"
+    }
 }
 
 private fun sp(c: Context) = c.getSharedPreferences("tools", Context.MODE_PRIVATE)
@@ -307,6 +361,52 @@ fun ToolsScreen(onBack: () -> Unit) {
             Btn("🗑 Ordner löschen", PINK) {
                 val r = repo; val f = del
                 if (r != null && f != null) confirm = Triple("Ordner „$f“ mit allem Inhalt löschen?", "", { run("Ordner löschen", { del = null; loadRepo(r) }) { Api.deleteFolder(r, f) } })
+            }
+        }
+
+        // 7 — Builds
+        Section("7 🚀 Builds") {
+            var runs by remember(repo) { mutableStateOf<List<Api.Run>>(emptyList()) }
+            Text("Repo: ${repo?.name ?: "– erst in Maske 2 wählen –"}", color = SOFT, fontSize = 13.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Btn("🚀 Neu bauen", modifier = Modifier.weight(1f)) { val r = repo; if (r != null) run("Build starten") { Api.build(r) } }
+                Btn("↻ Liste", modifier = Modifier.weight(1f)) { val r = repo; if (r != null) run("Builds laden") { val l = Api.runs(r); scope.launch { runs = l }; "✅ ${l.size} letzte Builds" } }
+            }
+            runs.forEach { b ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("${b.status} ${b.title}", color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    if (b.status == "⏳") TextButton(onClick = { val r = repo; if (r != null) run("Abbrechen") { Api.cancel(r, b) } }) { Text("⏹") }
+                    else TextButton(onClick = { val r = repo; if (r != null) run("Wiederholen") { Api.rerun(r, b) } }) { Text("🔁") }
+                    TextButton(onClick = { open(ctx, b.url) }) { Text("↗") }
+                }
+            }
+        }
+
+        // 8 — Releases
+        Section("8 📦 Versionen (Releases)") {
+            var rels by remember(repo) { mutableStateOf<List<Api.Rel>>(emptyList()) }
+            Text("Tipp: Die Versionen von HandyPutz und Link-Zentrale liegen im Repo HandyPutz-Updates.", color = SOFT, fontSize = 13.sp)
+            Btn("↻ Versionen von ${repo?.name ?: "…"} laden") { val r = repo; if (r != null) run("Versionen laden") { val l = Api.releases(r); scope.launch { rels = l }; "✅ ${l.size} Versionen" } }
+            rels.forEach { v ->
+                Column(Modifier.padding(vertical = 4.dp)) {
+                    Text((if (v.latest) "⭐ " else "") + v.name + "  (${v.tag})", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    v.files.forEach { f ->
+                        val u = "${repo?.html}/releases/download/${v.tag}/$f"
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("⬇ $f", color = SOFT, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { copy(ctx, u) }) { Text("📋") }
+                            TextButton(onClick = { share(ctx, "$f: $u") }) { Text("📤") }
+                        }
+                    }
+                    Row {
+                        if (!v.latest) TextButton(onClick = { val r = repo; if (r != null) run("Markieren") { Api.makeLatest(r, v).also { val l = Api.releases(r); scope.launch { rels = l } } } }) { Text("⭐ Als neueste", color = BLUE) }
+                        TextButton(onClick = {
+                            val r = repo
+                            if (r != null) confirm = Triple("Version ${v.name} löschen?", "", { run("Version löschen") { Api.deleteRelease(r, v).also { val l = Api.releases(r); scope.launch { rels = l } } } })
+                        }) { Text("🗑 Löschen", color = PINK) }
+                    }
+                    HorizontalDivider(color = Color(0x33FFFFFF))
+                }
             }
         }
 
