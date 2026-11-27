@@ -222,6 +222,7 @@ fun Screen() {
     var tools by remember { mutableStateOf(false) }
     var reviews by remember { mutableStateOf<Pair<String, String>?>(null) }   // Projekt, Repo
     var badges by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var pick by remember { mutableStateOf(false) }
     if (Api.token.isBlank()) Api.token = toolSp(ctx).getString("token", "") ?: ""
     fun repoOf(proj: String, ls: List<Link>): String? =
         if (proj == "Link-Zentrale") "$USER/Link-Zentrale"
@@ -260,7 +261,7 @@ fun Screen() {
                         val total = badges.values.sum()
                         if (total > 0) Badge(containerColor = Color(0xFFFF5C8A), modifier = Modifier.padding(start = 8.dp)) { Text("$total neu", color = Color.White) }
                     }
-                    Text(status, color = Color(0xFFA9C3E0), fontSize = 13.sp)
+                    Text("Version 1.${versionCode(ctx)} • $status", color = Color(0xFFA9C3E0), fontSize = 13.sp)
                 }
                 TextButton(onClick = { refresh() }) { Text("↻", fontSize = 26.sp, color = Color(0xFF8FD3FF)) }
             }
@@ -296,6 +297,11 @@ fun Screen() {
                     }
                 }
             }
+            val totalNew = badges.values.sum()
+            Button(
+                onClick = { pick = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(bottom = 8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = if (totalNew > 0) Color(0xFFFF5C8A) else Color(0xFF1B4A80), contentColor = Color.White)
+            ) { Text(if (totalNew > 0) "💬 Bewertungen – $totalNew neu" else "💬 Bewertungen lesen & beantworten", fontWeight = FontWeight.Bold) }
             Button(
                 onClick = { tools = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8FD3FF), contentColor = Color(0xFF0A2540))
@@ -340,6 +346,27 @@ fun Screen() {
             OutlinedButton(onClick = { add = true }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("➕ Eigenen Link hinzufügen", color = Color(0xFF8FD3FF)) }
             Text("Neue Apps in öffentlichen Repos mit Release erscheinen hier automatisch.", color = Color(0xFFA9C3E0), fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
         }
+    }
+
+    if (pick) {
+        val projs = links.groupBy { it.project }.mapNotNull { (p, ls) -> repoOf(p, ls)?.let { p to it } }.distinctBy { it.second }
+        AlertDialog(
+            onDismissRequest = { pick = false },
+            title = { Text("💬 Bewertungen") },
+            text = {
+                Column {
+                    if (projs.isEmpty()) Text("Noch keine Projekte geladen – oben ↻ antippen.")
+                    projs.forEach { (p, r) ->
+                        val n = badges[r] ?: 0
+                        OutlinedButton(onClick = { pick = false; reviews = p to r }, modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                            Text("📦 $p", modifier = Modifier.weight(1f))
+                            if (n > 0) Badge(containerColor = Color(0xFFFF5C8A)) { Text("$n neu", color = Color.White) }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { pick = false }) { Text("Schließen") } }
+        )
     }
 
     if (add) {

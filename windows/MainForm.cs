@@ -30,6 +30,24 @@ public class MainForm : Form
     List<string> assets = new();
     AppUpdate? update;
     Dictionary<string, int> badges = new();
+    readonly Button btnReviews = Wide("💬 Bewertungen lesen & beantworten", () => { }, CARD);
+
+    void PickReviews()
+    {
+        var projs = links.GroupBy(l => l.Project).Select(g => (g.Key, Repo: RepoOf(g.Key, g.ToList()))).Where(x => x.Repo != null).DistinctBy(x => x.Repo).ToList();
+        if (projs.Count == 0) { SetStatus("Noch keine Projekte geladen – oben ↻ klicken"); return; }
+        var m = new ContextMenuStrip { Font = new Font("Segoe UI", 11) };
+        foreach (var (p, r) in projs)
+        {
+            var n = badges.GetValueOrDefault(r!);
+            m.Items.Add($"📦 {p}" + (n > 0 ? $"   ({n} neu)" : ""), null, (_, _) =>
+            {
+                using (var f = new ReviewsForm(p, r!)) f.ShowDialog(this);
+                _ = CountBadges();
+            });
+        }
+        m.Show(btnReviews, new Point(0, btnReviews.Height));
+    }
 
     static string? RepoOf(string proj, List<Link> ls) =>
         proj == "Link-Zentrale" ? Gh.USER + "/Link-Zentrale"
@@ -45,6 +63,8 @@ public class MainForm : Form
         }
         badges = m;
         var total = m.Values.Sum();
+        btnReviews.Text = total > 0 ? $"💬 Bewertungen – {total} neu" : "💬 Bewertungen lesen & beantworten";
+        btnReviews.BackColor = total > 0 ? PINK : CARD; btnReviews.ForeColor = total > 0 ? BG : Color.White;
         Text = $"Link-Zentrale 1.{Gh.CurrentCode}" + (total > 0 ? $"  •  💬 {total} neu" : "");
         RenderLinks();
     }
@@ -80,6 +100,8 @@ public class MainForm : Form
         Controls.Add(tabs);
         Controls.Add(head);
 
+        btnReviews.ForeColor = Color.White;
+        btnReviews.Click += (_, _) => PickReviews();
         RenderLinks();
         Load += async (_, _) =>
         {
@@ -204,6 +226,7 @@ public class MainForm : Form
             Btn("📚 Alle Repos", () => Open($"https://github.com/{Gh.USER}?tab=repositories")),
             Btn("⚙️ Builds", () => Open($"https://github.com/{Gh.USER}/HandyPutz/actions")),
             Btn("📦 Versionen", () => Open($"https://github.com/{Gh.UPDATE_REPO}/releases"))));
+        s.Controls.Add(btnReviews);
         s.Controls.Add(Lbl("Download-Links", 14, true));
         s.Controls.Add(Wide("📋 Alle Links auf einmal kopieren", () =>
             Copy(string.Join("\r\n\r\n", links.Concat(own).Select(l => Strip(l.Name) + ":\r\n" + l.Url))), PINK));
