@@ -4,7 +4,9 @@
 
 Link-Zentrale shows every public repo of a GitHub account that has a release – with share-ready download links, QR codes, reviews (GitHub Issues), download counts, star rating and build status. With your own token it also manages repos, secrets, folders, builds and releases right from your phone.
 
-<!-- Screenshots: docs/screenshot-1.png … -->
+<p>
+<img src="docs/screenshot-1.jpg" width="200"> <img src="docs/screenshot-2.jpg" width="200"> <img src="docs/screenshot-3.jpg" width="200"> <img src="docs/screenshot-4.jpg" width="200">
+</p>
 
 ## ⬇ Download
 | | |

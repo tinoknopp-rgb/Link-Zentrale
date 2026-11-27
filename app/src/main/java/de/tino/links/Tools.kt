@@ -102,7 +102,9 @@ object Api {
         // Gibt es den Ordner schon (Datei darin vorhanden)? Dann nichts überschreiben
         val chk = call("GET", "/repos/${r.full}/contents/$p?ref=${r.branch}")
         if (chk.code in 200..299) return "ℹ️ Ordner „$p“ gibt es in ${r.name} schon"
-        need(call("PUT", "/repos/${r.full}/contents/$p/.gitkeep", JSONObject().put("message", "Ordner $p angelegt").put("content", "").put("branch", r.branch)), "Ordner anlegen")
+        val put = call("PUT", "/repos/${r.full}/contents/$p/.gitkeep", JSONObject().put("message", "Ordner $p angelegt").put("content", "").put("branch", r.branch))
+        if (put.code == 422) return "ℹ️ Ordner „$p“ gibt es in ${r.name} schon"   // .gitkeep liegt schon dort
+        need(put, "Ordner anlegen")
         return "✅ Ordner „$p“ in ${r.name} angelegt"
     }
 

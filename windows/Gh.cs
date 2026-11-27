@@ -286,7 +286,9 @@ public static class Gh
         // Gibt es den Ordner schon (Datei darin vorhanden)? Dann nichts überschreiben
         var chk = await Call("GET", $"/repos/{r.Full}/contents/{p}?ref={r.Branch}");
         if (chk.Code is >= 200 and < 300) return $"ℹ️ Ordner „{p}“ gibt es in {r.Name} schon";
-        Need(await Call("PUT", $"/repos/{r.Full}/contents/{p}/.gitkeep", new JsonObject { ["message"] = $"Ordner {p} angelegt", ["content"] = "", ["branch"] = r.Branch }), "Ordner anlegen");
+        var put = await Call("PUT", $"/repos/{r.Full}/contents/{p}/.gitkeep", new JsonObject { ["message"] = $"Ordner {p} angelegt", ["content"] = "", ["branch"] = r.Branch });
+        if (put.Code == 422) return $"ℹ️ Ordner „{p}“ gibt es in {r.Name} schon";   // .gitkeep liegt schon dort
+        Need(put, "Ordner anlegen");
         return $"✅ Ordner „{p}“ in {r.Name} angelegt";
     }
 
