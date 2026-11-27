@@ -188,5 +188,10 @@
 "✅ Builds": "✅ Builds",
 "⭐ Bewertung": "⭐ Review",
 "💡 Vorschlag": "💡 Suggestion",
-"🐞 Fehler": "🐞 Bug"
+"🐞 Fehler": "🐞 Bug",
+"Die Link-Zentrale hat einen Fehler. Der Bericht wird beim nächsten Start automatisch gesendet.": "Link-Zentrale ran into an error. The report is sent automatically on next start.",
+"Vorgänger-Version wiederherstellen?": "Restore previous version?",
+"Sprache: Deutsch": "Language: German",
+"🇩🇪 Deutsch": "🇩🇪 German",
+"🇬🇧 English": "🇬🇧 English"
 }

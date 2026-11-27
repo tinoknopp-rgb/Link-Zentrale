@@ -5,7 +5,7 @@ namespace LinkZentrale;
 /// <summary>Bewertungen, Vorschläge und Fehlerberichte eines Projekts lesen und beantworten</summary>
 public class ReviewsForm : Form
 {
-    readonly string repo;
+    readonly string repo, project;
     readonly Label status = Lbl("Lade …", 10, false, SOFT);
     readonly FlowLayoutPanel list = Stack();
     readonly FlowLayoutPanel detail = Stack();
@@ -14,8 +14,8 @@ public class ReviewsForm : Form
 
     public ReviewsForm(string project, string repo)
     {
-        this.repo = repo;
-        Text = $"💬 Bewertungen – {project}";
+        this.repo = repo; this.project = project;
+        Text = Tr.T("💬 Bewertungen") + " – " + project;
         BackColor = BG; ForeColor = Color.White; Font = new Font("Segoe UI", 10);
         ClientSize = new Size(W + 60, 820); StartPosition = FormStartPosition.CenterParent;
         try { Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!); } catch { }
@@ -34,14 +34,14 @@ public class ReviewsForm : Form
         Load += async (_, _) => await LoadList();
     }
 
-    void SetStatus(string s) { status.Text = s; status.ForeColor = s.StartsWith("❌") ? PINK : SOFT; }
+    void SetStatus(string s) { s = Tr.T(s); status.Text = s; status.ForeColor = s.StartsWith("❌") ? PINK : SOFT; }
 
     async Task LoadList()
     {
         SetStatus("Lade …");
         try
         {
-            issues = await Gh.Issues(repo);
+            issues = await Gh.Issues(repo, project);
             Render();
         }
         catch (Exception e) { SetStatus("❌ " + e.Message); }
@@ -90,7 +90,7 @@ public class ReviewsForm : Form
         var tb = new TextBox
         {
             Multiline = true, Height = 90, Width = W - 30, BackColor = Color.FromArgb(8, 28, 50), ForeColor = Color.White,
-            BorderStyle = BorderStyle.FixedSingle, PlaceholderText = "Antwort schreiben …", ScrollBars = ScrollBars.Vertical
+            BorderStyle = BorderStyle.FixedSingle, PlaceholderText = Tr.T("Antwort schreiben …"), ScrollBars = ScrollBars.Vertical
         };
         c.Controls.Add(tb);
         var open = i.Open;

@@ -45,6 +45,7 @@ jobs:
         shell: bash
         run: |
           VC=$((GITHUB_RUN_NUMBER + 1))
+          if [ -n "$FEEDBACK_TOKEN" ]; then sed -i "s|FEEDBACK = \"\"|FEEDBACK = \"$FEEDBACK_TOKEN\"|" windows/Secrets.cs; fi
           dotnet publish windows/LinkZentrale.csproj -c Release -p:Version=1.$VC -o out
           cp out/Link-Zentrale.exe Link-Zentrale.exe
       - uses: actions/upload-artifact@v4

@@ -18,6 +18,7 @@ public record RunInfo(long Id, string Title, string Status, string Url);
 public record Rel(long Id, string Tag, string Name, bool Latest, List<string> Files);
 public record Issue(int Number, string Title, string Body, string User, string Date, bool Open, int Comments, string Url);
 public record Comment(string User, string Body, string Date);
+public record Info(string Project, string Repo, int Unread, int Ratings, double Avg, int Bugs, int Downloads, string Build, string BuildUrl);
 public record AppUpdate(int Code, string Name, string Url);
 
 /// <summary>Einstellungen in %APPDATA%\Link-Zentrale (Token mit Windows-Schutz verschlüsselt)</summary>
@@ -155,7 +156,7 @@ public static class Gh
         var info = links.FirstOrDefault(l => l.Name.Contains("Infoseite"));
         if (info != null) sb.Append("ℹ️ Infos & Anleitung: ").Append(info.Url).Append("\r\n");
         sb.Append("\r\nUpdates kommen automatisch. Danke für deine Rückmeldung! 🙏");
-        return sb.ToString();
+        return Tr.T(sb.ToString());
     }
 
     static string Icon(string n) => Path.GetExtension(n).ToLower() switch { ".apk" => "📱", ".exe" or ".msi" => "💻", ".pdf" => "📄", _ => "📦" };
@@ -183,6 +184,19 @@ public static class Gh
     }
 
     /// <summary>Lädt die neue exe, ersetzt die laufende nach dem Beenden und startet neu</summary>
+    /// <summary>Vorgänger-Version (wird bei jedem Update aufgehoben)</summary>
+    public static string Backup => Path.Combine(Path.GetDirectoryName(Environment.ProcessPath!)!, "Link-Zentrale.alt.exe");
+
+    /// <summary>Vorgänger wiederherstellen und neu starten</summary>
+    public static void Restore()
+    {
+        var me = Environment.ProcessPath!;
+        var cmd = Path.Combine(Path.GetTempPath(), "link-zentrale-restore.cmd");
+        File.WriteAllText(cmd, "@echo off\r\ntimeout /t 2 /nobreak >nul\r\n" + $"copy /y \"{Backup}\" \"{me}\" >nul\r\nstart \"\" \"{me}\"\r\ndel \"%~f0\"\r\n");
+        Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"{cmd}\"") { CreateNoWindow = true, UseShellExecute = false });
+        Environment.Exit(0);
+    }
+
     public static async Task InstallUpdate(AppUpdate u)
     {
         var me = Environment.ProcessPath!;
@@ -193,6 +207,7 @@ public static class Gh
         await File.WriteAllTextAsync(cmd,
             "@echo off\r\n" +
             "timeout /t 2 /nobreak >nul\r\n" +
+            $"copy /y \"{me}\" \"{Backup}\" >nul\r\n" +
             $"move /y \"{neu}\" \"{me}\" >nul\r\n" +
             $"start \"\" \"{me}\"\r\n" +
             "del \"%~f0\"\r\n", Encoding.Default);
@@ -330,11 +345,11 @@ public static class Gh
         return $"🗑 {v.Name} gelöscht";
     }
     // ---------------- Bewertungen (Issues im Update-Repo) ----------------
-    public static async Task<List<Issue>> Issues(string repo)
+    public static async Task<List<Issue>> Issues(string repo, string? project = null)
     {
         var r = await Call("GET", $"/repos/{repo}/issues?state=all&per_page=60&sort=created&direction=desc");
         if (r.Code == 404) return new();
-        return J(Need(r, "Bewertungen laden")).AsArray().Where(o => o!["pull_request"] == null).Select(o => new Issue(
+        return J(Need(r, "Bewertungen laden")).AsArray().Where(o => o!["pull_request"] == null && Belongs(project, o["title"]?.ToString() ?? "")).Select(o => new Issue(
             o!["number"]!.GetValue<int>(), o["title"]?.ToString() ?? "", o["body"]?.ToString() ?? "", o["user"]?["login"]?.ToString() ?? "",
             (o["created_at"]?.ToString() ?? "").PadRight(10)[..10], o["state"]?.ToString() == "open", o["comments"]!.GetValue<int>(), o["html_url"]!.ToString())).ToList();
     }
@@ -353,6 +368,72 @@ public static class Gh
     {
         if (Token == "") throw new Exception("Dafür zuerst im Reiter 🛠 Werkzeuge den Token speichern");
         Need(await Call("PATCH", $"/repos/{repo}/issues/{n}", new JsonObject { ["state"] = open ? "open" : "closed" }), "Status ändern");
+    }
+
+    /// <summary>Die Link-Zentrale teilt sich das Update-Repo mit HandyPutz → Einträge nach Titel trennen</summary>
+    public static bool Belongs(string? project, string title) =>
+        project == null || (project == "Link-Zentrale" ? title.StartsWith("Link-Zentrale") : !title.StartsWith("Link-Zentrale"));
+
+    public static string SrcRepo(string project, string repo) => project == "Link-Zentrale" ? USER + "/Link-Zentrale" : (repo.EndsWith("-Updates") ? repo[..^8] : repo);
+
+    public static int Stars(string t) => t.Count(ch => ch == '★');
+
+    /// <summary>Statistik je Projekt: neu, Sterne, offene Fehler, Downloads, letzter Build</summary>
+    public static async Task<Info> ProjectInfo(string project, string repo)
+    {
+        var issues = new List<Issue>();
+        try { issues = await Issues(repo, project); } catch { }
+        var rated = issues.Where(i => Stars(i.Title) > 0).ToList();
+        int dl = 0;
+        try
+        {
+            var r = await Call("GET", $"/repos/{repo}/releases?per_page=100");
+            if (r.Code is >= 200 and < 300)
+                foreach (var rel in J(r).AsArray())
+                {
+                    var linkTag = rel!["tag_name"]!.ToString().StartsWith("link-");
+                    if (linkTag != (project == "Link-Zentrale")) continue;
+                    foreach (var a in rel["assets"]!.AsArray())
+                        if (project == "Link-Zentrale" || ProjectOf(a!["name"]!.ToString()) == project) dl += a!["download_count"]!.GetValue<int>();
+                }
+        }
+        catch { }
+        string build = "", url = "";
+        try
+        {
+            var r = await Call("GET", $"/repos/{SrcRepo(project, repo)}/actions/runs?per_page=1");
+            var o = r.Code is >= 200 and < 300 ? J(r)["workflow_runs"]?.AsArray().FirstOrDefault() : null;
+            if (o != null)
+            {
+                build = o["conclusion"]?.ToString() switch { "success" => "✅", "failure" => "❌", "cancelled" => "⏹", _ => o["status"]?.ToString() == "completed" ? "•" : "⏳" };
+                url = o["html_url"]!.ToString();
+            }
+        }
+        catch { }
+        return new Info(project, repo, issues.Count(i => Seen.IsNew(repo, i)), rated.Count, rated.Count == 0 ? 0 : rated.Average(i => Stars(i.Title)),
+            issues.Count(i => i.Open && Kind(i.Title) == "🐞"), dl, build, url);
+    }
+
+    // ---------------- Feedback aus der Link-Zentrale ----------------
+
+    /// <summary>true = gesendet; false = kein Zugang (dann per E-Mail)</summary>
+    public static async Task<bool> SendFeedback(string title, string body)
+    {
+        var key = Secrets.FEEDBACK != "" ? Secrets.FEEDBACK : Token;
+        if (key == "") return false;
+        var old = Token;
+        try
+        {
+            Token = key;
+            var r = await Call("POST", $"/repos/{UPDATE_REPO}/issues", new JsonObject
+            {
+                ["title"] = ("Link-Zentrale: " + title).Length > 200 ? ("Link-Zentrale: " + title)[..200] : "Link-Zentrale: " + title,
+                ["body"] = body + "\n\n---\nApp: Link-Zentrale 1." + CurrentCode + " • Windows " + Environment.OSVersion.Version
+            });
+            return r.Code is >= 200 and < 300;
+        }
+        catch { return false; }
+        finally { Token = old; }
     }
 
     public static string Kind(string t) =>

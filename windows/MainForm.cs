@@ -8,6 +8,7 @@ static class Program
     static void Main()
     {
         ApplicationConfiguration.Initialize();
+        Crash.Install();
         Application.Run(new MainForm());
     }
 }
@@ -29,18 +30,18 @@ public class MainForm : Form
     Repo? repo;
     List<string> assets = new();
     AppUpdate? update;
-    Dictionary<string, int> badges = new();
+    Dictionary<string, Info> infos = new();
     readonly Button btnReviews = Wide("💬 Bewertungen lesen & beantworten", () => { }, CARD);
 
     void PickReviews()
     {
-        var projs = links.GroupBy(l => l.Project).Select(g => (g.Key, Repo: RepoOf(g.Key, g.ToList()))).Where(x => x.Repo != null).DistinctBy(x => x.Repo).ToList();
+        var projs = links.Where(l => l.Project != "").GroupBy(l => l.Project).Select(g => (g.Key, Repo: RepoOf(g.ToList()))).Where(x => x.Repo != null).ToList();
         if (projs.Count == 0) { SetStatus("Noch keine Projekte geladen – oben ↻ klicken"); return; }
         var m = new ContextMenuStrip { Font = new Font("Segoe UI", 11) };
         foreach (var (p, r) in projs)
         {
-            var n = badges.GetValueOrDefault(r!);
-            m.Items.Add($"📦 {p}" + (n > 0 ? $"   ({n} neu)" : ""), null, (_, _) =>
+            var n = infos.GetValueOrDefault(p)?.Unread ?? 0;
+            m.Items.Add($"📦 {p}" + (n > 0 ? Tr.T($"   ({n} neu)") : ""), null, (_, _) =>
             {
                 using (var f = new ReviewsForm(p, r!)) f.ShowDialog(this);
                 _ = CountBadges();
@@ -49,23 +50,24 @@ public class MainForm : Form
         m.Show(btnReviews, new Point(0, btnReviews.Height));
     }
 
-    static string? RepoOf(string proj, List<Link> ls) =>
-        proj == "Link-Zentrale" ? Gh.USER + "/Link-Zentrale"
-        : ls.Select(l => System.Text.RegularExpressions.Regex.Match(l.Url, @"github\.com/([^/]+/[^/]+)/releases")).FirstOrDefault(m => m.Success)?.Groups[1].Value;
+    static string? RepoOf(List<Link> ls) =>
+        ls.Select(l => System.Text.RegularExpressions.Regex.Match(l.Url, @"github\.com/([^/]+/[^/]+)/releases")).FirstOrDefault(m => m.Success)?.Groups[1].Value;
 
     async Task CountBadges()
     {
-        var m = new Dictionary<string, int>();
-        foreach (var g in links.GroupBy(l => l.Project))
+        var m = new Dictionary<string, Info>();
+        foreach (var g in links.Where(l => l.Project != "").GroupBy(l => l.Project))
         {
-            var r = RepoOf(g.Key, g.ToList()); if (r == null || m.ContainsKey(r)) continue;
-            try { m[r] = (await Gh.Issues(r)).Count(i => Seen.IsNew(r, i)); } catch { m[r] = 0; }
+            var r = RepoOf(g.ToList()); if (r == null) continue;
+            try { m[g.Key] = await Gh.ProjectInfo(g.Key, r); } catch { }
         }
-        badges = m;
-        var total = m.Values.Sum();
-        btnReviews.Text = total > 0 ? $"💬 Bewertungen – {total} neu" : "💬 Bewertungen lesen & beantworten";
+        infos = m;
+        var total = m.Values.Sum(i => i.Unread);
+        var bad = m.Values.Where(i => i.Build == "❌").Select(i => i.Project).ToList();
+        if (bad.Count > 0) SetStatus("❌ Build fehlgeschlagen: " + string.Join(", ", bad), true);
+        btnReviews.Text = Tr.T(total > 0 ? $"💬 Bewertungen – {total} neu" : "💬 Bewertungen lesen & beantworten");
         btnReviews.BackColor = total > 0 ? PINK : CARD; btnReviews.ForeColor = total > 0 ? BG : Color.White;
-        Text = $"Link-Zentrale 1.{Gh.CurrentCode}" + (total > 0 ? $"  •  💬 {total} neu" : "");
+        Text = $"Link-Zentrale 1.{Gh.CurrentCode}" + (total > 0 ? Tr.T($"  •  💬 {total} neu") : "");
         RenderLinks();
     }
 
@@ -91,8 +93,8 @@ public class MainForm : Form
 
         // ---------- Reiter ----------
         var tabs = new TabControl { Dock = DockStyle.Fill, Font = new Font("Segoe UI", 11, FontStyle.Bold), Padding = new Point(16, 6) };
-        var tLinks = new TabPage("🔗 Links") { BackColor = BG };
-        var tTools = new TabPage("🛠 Werkzeuge") { BackColor = BG };
+        var tLinks = new TabPage(Tr.T("🔗 Links")) { BackColor = BG };
+        var tTools = new TabPage(Tr.T("🛠 Werkzeuge")) { BackColor = BG };
         tLinks.Controls.Add(Page(BuildLinks()));
         tTools.Controls.Add(Page(BuildTools()));
         tabs.TabPages.AddRange(new[] { tLinks, tTools });
@@ -107,6 +109,7 @@ public class MainForm : Form
         {
             Gh.Token = Store.Token;
             await RefreshAll();
+            _ = Crash.SendPending();
             if (Gh.Token != "") { await Run("Anmelden", Gh.Me); await LoadRepos(); }
         };
     }
@@ -124,7 +127,7 @@ public class MainForm : Form
 
     internal static Label Lbl(string t, float size = 10, bool bold = false, Color? c = null) => new()
     {
-        Text = t, AutoSize = true, MaximumSize = new Size(W - 30, 0), ForeColor = c ?? Color.White, BackColor = Color.Transparent,
+        Text = Tr.T(t), AutoSize = true, MaximumSize = new Size(W - 30, 0), ForeColor = c ?? Color.White, BackColor = Color.Transparent,
         Font = new Font("Segoe UI", size, bold ? FontStyle.Bold : FontStyle.Regular), Margin = new Padding(3, 4, 3, 2)
     };
 
@@ -132,7 +135,7 @@ public class MainForm : Form
     {
         var b = new Button
         {
-            Text = t, Height = 38, FlatStyle = FlatStyle.Flat, BackColor = c ?? BLUE, ForeColor = BG, Cursor = Cursors.Hand,
+            Text = Tr.T(t), Height = 38, FlatStyle = FlatStyle.Flat, BackColor = c ?? BLUE, ForeColor = BG, Cursor = Cursors.Hand,
             Font = new Font("Segoe UI", 10, FontStyle.Bold), Margin = new Padding(3), Padding = new Padding(8, 2, 8, 2)
         };
         b.FlatAppearance.BorderSize = 0;
@@ -152,7 +155,7 @@ public class MainForm : Form
 
     internal static TextBox Txt(string ph, bool pw = false) => new()
     {
-        PlaceholderText = ph, UseSystemPasswordChar = pw, Width = W - 30, BackColor = INPUT, ForeColor = Color.White,
+        PlaceholderText = Tr.T(ph), UseSystemPasswordChar = pw, Width = W - 30, BackColor = INPUT, ForeColor = Color.White,
         BorderStyle = BorderStyle.FixedSingle, Font = new Font("Segoe UI", 11), Margin = new Padding(3)
     };
 
@@ -186,7 +189,7 @@ public class MainForm : Form
     internal static void Mail(string subject, string body) =>
         Open($"mailto:?subject={Uri.EscapeDataString(subject)}&body={Uri.EscapeDataString(body)}");
 
-    void SetStatus(string s, bool err = false) { status.Text = s; status.ForeColor = err || s.StartsWith("❌") ? PINK : SOFT; }
+    void SetStatus(string s, bool err = false) { s = Tr.T(s); status.Text = s; status.ForeColor = err || s.StartsWith("❌") ? PINK : SOFT; }
 
     async Task Run(string label, Func<Task<string>> f)
     {
@@ -201,10 +204,10 @@ public class MainForm : Form
     {
         using var f = new Form
         {
-            Text = title, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent,
+            Text = Tr.T(title), FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent,
             ClientSize = new Size(460, 150), MaximizeBox = false, MinimizeBox = false, BackColor = BG, ForeColor = Color.White, Font = new Font("Segoe UI", 10)
         };
-        var l = new Label { Text = label, AutoSize = true, Location = new Point(14, 14), MaximumSize = new Size(430, 0) };
+        var l = new Label { Text = Tr.T(label), AutoSize = true, Location = new Point(14, 14), MaximumSize = new Size(430, 0) };
         var t = new TextBox { Location = new Point(14, 50), Width = 430, UseSystemPasswordChar = pw, BackColor = INPUT, ForeColor = Color.White, BorderStyle = BorderStyle.FixedSingle };
         var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, Location = new Point(270, 100), Width = 80, BackColor = BLUE, ForeColor = BG, FlatStyle = FlatStyle.Flat };
         var no = new Button { Text = "Abbrechen", DialogResult = DialogResult.Cancel, Location = new Point(360, 100), Width = 84, FlatStyle = FlatStyle.Flat };
@@ -213,13 +216,16 @@ public class MainForm : Form
         return f.ShowDialog() == DialogResult.OK ? t.Text.Trim() : null;
     }
 
-    internal static bool Ask(string q) => MessageBox.Show(q, "Link-Zentrale", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
+    internal static bool Ask(string q) => MessageBox.Show(Tr.T(q), "Link-Zentrale", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
 
     // ======================= Reiter 1: Links =======================
 
     Control BuildLinks()
     {
         var s = Stack();
+        s.Controls.Add(Row(
+            Btn("⭐ Feedback geben", () => { using var f = new FeedbackForm(); f.ShowDialog(this); }, Color.FromArgb(255, 201, 77)),
+            Btn(Tr.En ? "🇩🇪 Deutsch" : "🇬🇧 English", () => Tr.Set(!Tr.En), SOFT)));
         s.Controls.Add(Lbl("GitHub", 14, true));
         s.Controls.Add(Row(
             Btn("👤 Mein Konto", () => Open($"https://github.com/{Gh.USER}")),
@@ -255,10 +261,22 @@ public class MainForm : Form
             h.BackColor = Color.FromArgb(27, 74, 128); h.Margin = new Padding(0, 16, 0, 4);
             if (proj != "Eigene Links")
             {
-                var repoP = RepoOf(proj, ls);
+                var repoP = RepoOf(ls);
+                var inf = infos.GetValueOrDefault(proj);
+                if (inf != null)
+                {
+                    var parts = new List<string>();
+                    if (inf.Build != "") parts.Add(inf.Build + " Build");
+                    parts.Add($"⬇ {inf.Downloads} Downloads");
+                    if (inf.Ratings > 0) parts.Add($"★ {inf.Avg:0.0} ({inf.Ratings})");
+                    if (inf.Bugs > 0) parts.Add($"🐞 {inf.Bugs} offene Fehler");
+                    var st = Lbl(string.Join("  •  ", parts), 10, true);
+                    if (inf.BuildUrl != "") { st.Cursor = Cursors.Hand; st.Click += (_, _) => Open(inf.BuildUrl); }
+                    h.Controls.Add(st);
+                }
                 if (repoP != null)
                 {
-                    var n = badges.GetValueOrDefault(repoP);
+                    var n = inf?.Unread ?? 0;
                     h.Controls.Add(Btn(n > 0 ? $"💬 Bewertungen  ({n} neu)" : "💬 Bewertungen", () =>
                     {
                         using (var f = new ReviewsForm(proj, repoP)) f.ShowDialog(this);
@@ -268,7 +286,12 @@ public class MainForm : Form
                 h.Controls.Add(Lbl("Test-Link zum Weitergeben – fertige Nachricht mit Anleitung", 9, false, SOFT));
                 h.Controls.Add(Row(
                     Btn("📋 Test-Nachricht kopieren", () => Copy(Gh.TestMsg(proj, ls))),
-                    Btn("📧 Per E-Mail an Tester", () => Mail($"Bitte teste: {proj}", Gh.TestMsg(proj, ls)), GREEN)));
+                    Btn("📧 Per E-Mail an Tester", () => Mail(Tr.T($"Bitte teste: {proj}"), Gh.TestMsg(proj, ls)), GREEN),
+                    Btn("🔳 QR-Code", () =>
+                    {
+                        var main = ls.FirstOrDefault(l => l.Url.EndsWith(".apk")) ?? ls.FirstOrDefault(l => !l.Name.Contains("Infoseite"));
+                        if (main != null) using (var q = new QrForm(proj, main.Url)) q.ShowDialog(this);
+                    }, SOFT)));
             }
             linksPanel.Controls.Add(h);
             foreach (var l in ls)
