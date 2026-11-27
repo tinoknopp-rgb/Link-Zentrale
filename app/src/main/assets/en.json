@@ -193,5 +193,18 @@
 "Vorgänger-Version wiederherstellen?": "Restore previous version?",
 "Sprache: Deutsch": "Language: German",
 "🇩🇪 Deutsch": "🇩🇪 German",
-"🇬🇧 English": "🇬🇧 English"
+"🇬🇧 English": "🇬🇧 English",
+"9 📤 Dateien hochladen": "9 📤 Upload files",
+"📎 Dateien auswählen": "📎 Choose files",
+"📤 Hochladen": "📤 Upload",
+"Zielordner: Hauptordner": "Target folder: main folder",
+"Zielordner:": "Target folder:",
+"Hauptordner": "Main folder",
+"(Hauptordner)": "(main folder)",
+"Dateien zum Hochladen": "Files to upload",
+"Noch keine Dateien gewählt": "No files chosen yet",
+"Datei(en): ": "file(s): ",
+"Gleicher Name = neue Version, die alte bleibt im Verlauf.": "Same name = new version, the old one stays in the history.",
+"Hochladen fehlgeschlagen": "Upload failed",
+"ist zu groß (max. 50 MB)": "is too large (max. 50 MB)"
 }

@@ -279,6 +279,20 @@ public static class Gh
         return $"✅ Ordner „{p}“ in {r.Name} angelegt";
     }
 
+    /// <summary>Lädt eine Datei hoch (oder ersetzt sie als neue Version)</summary>
+    public static async Task<string> UploadFile(Repo r, string folder, string name, byte[] bytes)
+    {
+        if (bytes.Length > 50 * 1024 * 1024) throw new Exception($"„{name}“ ist zu groß (max. 50 MB)");
+        var dir = folder.Trim().Trim('/');
+        var path = (dir == "" ? "" : dir + "/") + name.Trim().Trim('/');
+        var enc = string.Join("/", path.Split('/').Select(Uri.EscapeDataString));
+        var old = await Call("GET", $"/repos/{r.Full}/contents/{enc}?ref={r.Branch}");
+        var body = new JsonObject { ["message"] = $"Upload {path}", ["branch"] = r.Branch, ["content"] = Convert.ToBase64String(bytes) };
+        if (old.Code == 200) try { body["sha"] = J(old)["sha"]!.ToString(); } catch { }
+        Need(await Call("PUT", $"/repos/{r.Full}/contents/{enc}", body), "Hochladen");
+        return (old.Code == 200 ? "♻ " : "✅ ") + path;
+    }
+
     public static async Task<string> DeleteFolder(Repo r, string path)
     {
         var p = path.Trim().Trim('/');

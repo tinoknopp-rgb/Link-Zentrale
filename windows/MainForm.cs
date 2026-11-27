@@ -22,7 +22,7 @@ public class MainForm : Form
     readonly Label status = new();
     readonly Button btnUpdate;
     readonly FlowLayoutPanel linksPanel = Stack(), repoLinks = Stack(), runsPanel = Stack(), relsPanel = Stack();
-    readonly ComboBox cbRepo = Combo(), cbFolder = Combo();
+    readonly ComboBox cbRepo = Combo(), cbFolder = Combo(), cbUpDir = Combo();
     readonly List<Label> targets = new();
 
     List<Link> links = Store.Load("cache.json"), own = Store.Load("own.json");
@@ -429,6 +429,40 @@ public class MainForm : Form
         }, PINK));
         s.Controls.Add(c5);
 
+        // 9 — Dateien hochladen
+        var c9 = Card("9 📤 Dateien hochladen");
+        c9.Controls.Add(Target());
+        c9.Controls.Add(Lbl("Zielordner:", 9, false, SOFT));
+        cbUpDir.Items.Add("(Hauptordner)"); cbUpDir.SelectedIndex = 0;
+        c9.Controls.Add(cbUpDir);
+        string[] upFiles = Array.Empty<string>();
+        var lbUp = Lbl("Noch keine Dateien gewählt", 9, false, Color.White);
+        c9.Controls.Add(Wide("📎 Dateien auswählen", () =>
+        {
+            using var d = new OpenFileDialog { Multiselect = true, Title = Tr.T("Dateien zum Hochladen") };
+            if (d.ShowDialog(this) != DialogResult.OK) return;
+            upFiles = d.FileNames;
+            lbUp.Text = Tr.T($"{upFiles.Length} Datei(en): ") + string.Join(", ", upFiles.Select(Path.GetFileName));
+        }));
+        c9.Controls.Add(lbUp);
+        c9.Controls.Add(Wide("📤 Hochladen", async () =>
+        {
+            if (repo == null || upFiles.Length == 0) return;
+            var r = repo; var files = upFiles;
+            var dir = cbUpDir.SelectedIndex > 0 ? cbUpDir.SelectedItem as string ?? "" : "";
+            await Run("Hochladen", async () =>
+            {
+                var res = new List<string>();
+                foreach (var f in files)
+                    try { res.Add(await Gh.UploadFile(r, dir, Path.GetFileName(f), await File.ReadAllBytesAsync(f))); }
+                    catch (Exception e) { res.Add($"❌ {Path.GetFileName(f)}: {e.Message}"); }
+                return string.Join("\n", res);
+            });
+            upFiles = Array.Empty<string>(); lbUp.Text = Tr.T("Noch keine Dateien gewählt"); await LoadRepo();
+        }, PINK));
+        c9.Controls.Add(Lbl("Gleicher Name = neue Version, die alte bleibt im Verlauf.", 9, false, SOFT));
+        s.Controls.Add(c9);
+
         // 6 — Builds
         var c6 = Card("6 🚀 Builds");
         c6.Controls.Add(Target());
@@ -495,6 +529,7 @@ public class MainForm : Form
             assets = await Gh.Assets(r);
             var folders = await Gh.Folders(r);
             cbFolder.Items.Clear(); foreach (var f in folders) cbFolder.Items.Add(f);
+            cbUpDir.Items.Clear(); cbUpDir.Items.Add("(Hauptordner)"); foreach (var f in folders.Where(x => !x.StartsWith("."))) cbUpDir.Items.Add(f); cbUpDir.SelectedIndex = 0;
             RenderRepoLinks(r);
             return $"✅ {r.Name}: {folders.Count} Ordner, {assets.Count} Dateien im neuesten Release";
         });

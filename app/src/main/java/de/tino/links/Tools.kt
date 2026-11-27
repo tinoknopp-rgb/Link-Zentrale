@@ -4,7 +4,11 @@ package de.tino.links
 
 import android.content.Context
 import android.util.Base64
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -94,6 +98,20 @@ object Api {
         val p = path.trim().trim('/')
         need(call("PUT", "/repos/${r.full}/contents/$p/.gitkeep", JSONObject().put("message", "Ordner $p angelegt").put("content", "").put("branch", r.branch)), "Ordner anlegen")
         return "✅ Ordner „$p“ in ${r.name} angelegt"
+    }
+
+    /** Lädt eine Datei hoch (oder ersetzt sie als neue Version) */
+    fun uploadFile(r: Repo, folder: String, name: String, bytes: ByteArray): String {
+        if (bytes.size > 50 * 1024 * 1024) throw Exception("„$name“ ist zu groß (max. 50 MB)")
+        val dir = folder.trim().trim('/')
+        val path = (if (dir.isEmpty()) "" else "$dir/") + name.trim().trim('/')
+        val enc = path.split('/').joinToString("/") { java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
+        val old = call("GET", "/repos/${r.full}/contents/$enc?ref=${r.branch}")
+        val body = JSONObject().put("message", "Upload $path").put("branch", r.branch)
+            .put("content", Base64.encodeToString(bytes, Base64.NO_WRAP))
+        if (old.code == 200) try { body.put("sha", JSONObject(old.body).getString("sha")) } catch (_: Exception) { }
+        need(call("PUT", "/repos/${r.full}/contents/$enc", body), "Hochladen")
+        return (if (old.code == 200) "♻ " else "✅ ") + path
     }
 
     /** Löscht alle Dateien unter dem Ordner in einem einzigen Commit */
@@ -363,6 +381,29 @@ fun ToolsScreen(onBack: () -> Unit) {
                 val r = repo; val f = del
                 if (r != null && f != null) confirm = Triple("Ordner „$f“ mit allem Inhalt löschen?", "", { run("Ordner löschen", { del = null; loadRepo(r) }) { Api.deleteFolder(r, f) } })
             }
+        }
+
+        // 9 — Dateien hochladen
+        Section("9 📤 Dateien hochladen") {
+            var dir by remember(repo) { mutableStateOf("") }
+            var picked by remember { mutableStateOf<List<Uri>>(emptyList()) }
+            val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { picked = it }
+            fun nameOf(u: Uri): String = ctx.contentResolver.query(u, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                if (it.moveToFirst()) it.getString(0) else null } ?: (u.lastPathSegment?.substringAfterLast('/') ?: "datei")
+            Text("Repo: ${repo?.name ?: "– erst in Maske 2 wählen –"}", color = SOFT, fontSize = 13.sp)
+            Picker("Zielordner: Hauptordner", listOf("") + folders.filter { !it.startsWith(".") }, dir, { if (it.isEmpty()) "Hauptordner" else "📂 $it" }) { dir = it }
+            Btn("📎 Dateien auswählen") { pick.launch(arrayOf("*/*")) }
+            if (picked.isNotEmpty()) Text("${picked.size} Datei(en): " + picked.joinToString(", ") { nameOf(it) }, color = Color.White, fontSize = 13.sp)
+            Btn("📤 Hochladen", PINK) {
+                val r = repo; val files = picked
+                if (r != null && files.isNotEmpty()) run("Hochladen", { picked = emptyList(); loadRepo(r) }) {
+                    files.joinToString("\n") { u ->
+                        val n = nameOf(u)
+                        try { Api.uploadFile(r, dir, n, ctx.contentResolver.openInputStream(u)!!.use { it.readBytes() }) } catch (e: Exception) { "❌ $n: ${e.message}" }
+                    }
+                }
+            }
+            Text("Gleicher Name = neue Version, die alte bleibt im Verlauf.", color = SOFT, fontSize = 13.sp)
         }
 
         // 7 — Builds
