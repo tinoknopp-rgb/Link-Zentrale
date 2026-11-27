@@ -37,3 +37,38 @@ Danach in der Link-Zentrale oben **↻** → das Projekt erscheint mit eigenem K
 4. **🛠 Werkzeuge**: Token · Repo & alle Links · neues Repo · Secret · Ordner · Builds neu starten · Versionen verwalten · Repo löschen
 5. **⭐** oben = eigenes Feedback · 🇩🇪/🇬🇧 = Sprache · Widget auf dem Startbildschirm · Benachrichtigung bei neuer Bewertung oder fehlgeschlagenem Build
 6. Updates kommen automatisch beim Öffnen (Handy: „Jetzt aktualisieren“, PC: Knopf **⬆ Update**)
+
+---
+
+## C) Link-Zentrale aus jedem Projekt-Chat verbessern und erweitern
+
+Jeder Chat darf die Link-Zentrale für **sein** Projekt verbessern. Zwei Wege:
+
+### 1. Ohne Code: Datei `link-zentrale.json` ins **Update-Repo** des Projekts (öffentlich, Hauptordner)
+```json
+{
+  "beschreibung": "Findet Geschenkideen in deinen Chats",
+  "tester_text": "Bitte besonders die Suche nach Geburtstagen testen.",
+  "links": [
+    { "name": "📘 Handbuch", "url": "https://github.com/tinoknopp-rgb/WunschFinder-Updates#readme", "info": "Kurzanleitung" },
+    { "name": "🎥 Video", "url": "https://…", "info": "So funktioniert's" }
+  ]
+}
+```
+→ Beschreibung steht im Projekt-Kasten, `tester_text` kommt in die Tester-Nachricht, `links` erscheinen als eigene Karten (Kopieren/Senden/QR). Wirkt sofort nach **↻** – ohne neue App-Version.
+
+### 2. Mit Code: Repo `tinoknopp-rgb/Link-Zentrale` (privat)
+| Bereich | Android (`app/src/main/java/de/tino/links/`) | Windows (`windows/`) |
+|---|---|---|
+| Links, Projekt-Kästen, Download-Liste | `MainActivity.kt` | `MainForm.cs`, `Gh.cs` |
+| Werkzeuge (Token, Repos, Secrets, Builds, Versionen) | `Tools.kt` | `MainForm.cs` (Reiter Werkzeuge), `Gh.cs` |
+| Bewertungen lesen/antworten | `Reviews.kt` | `ReviewsForm.cs` |
+| Statistik, Benachrichtigung, Widget, QR, Feedback, Absturzschutz | `Extras.kt` | `Extras.cs` |
+| Deutsch/Englisch | `I18n.kt` + `app/src/main/assets/en.json` (gilt für beide) | `Extras.cs` (Tr) |
+
+**Regeln:**
+1. Immer **Android und Windows** gleich anpassen.
+2. Projekt-eigene Funktionen nur mit Bedingung auf den Projektnamen (`project == "WunschFinder"`) – nichts für andere Projekte kaputt machen.
+3. Neue Texte auch in `en.json` eintragen.
+4. Commit-Nachricht beginnt mit `[Projektname]`, Push auf `main`.
+5. Der Build baut Handy + PC und veröffentlicht automatisch `link-v1.N` – alle Link-Zentralen aktualisieren sich selbst. Build in Actions muss ✅ sein, sonst sofort reparieren.

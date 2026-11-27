@@ -235,7 +235,7 @@ public class MainForm : Form
         s.Controls.Add(btnReviews);
         s.Controls.Add(Lbl("Download-Links", 14, true));
         s.Controls.Add(Wide("📋 Alle Links auf einmal kopieren", () =>
-            Copy(string.Join("\r\n\r\n", links.Concat(own).Select(l => Strip(l.Name) + ":\r\n" + l.Url))), PINK));
+            Copy(string.Join("\r\n\r\n", links.Concat(own).Where(l => !l.IsMeta).Select(l => Strip(l.Name) + ":\r\n" + l.Url))), PINK));
         s.Controls.Add(linksPanel);
         s.Controls.Add(Wide("➕ Eigenen Link hinzufügen", () =>
         {
@@ -294,7 +294,9 @@ public class MainForm : Form
                     }, SOFT)));
             }
             linksPanel.Controls.Add(h);
-            foreach (var l in ls)
+            var desc = ls.FirstOrDefault(l => l.Url.StartsWith("desc:"));
+            if (desc != null) h.Controls.Add(Lbl(desc.Name, 10, false, SOFT));
+            foreach (var l in ls.Where(l => !l.IsMeta))
             {
                 var c = Card("");
                 c.Controls.Add(Lbl(l.Name, 12, true));

@@ -42,19 +42,23 @@ const val USER = "tinoknopp-rgb"
 // Updates der Link-Zentrale liegen im öffentlichen Update-Repo mit Kennzeichen „link-v…“
 const val UPDATE_REPO = "$USER/HandyPutz-Updates"
 
-data class Link(val name: String, val url: String, val info: String = "", val own: Boolean = false, val project: String = "")
+data class Link(val name: String, val url: String, val info: String = "", val own: Boolean = false, val project: String = "") {
+    /** Beschreibung / Tester-Text aus link-zentrale.json – keine eigene Karte */
+    val isMeta get() = url.startsWith("desc:") || url.startsWith("tester:")
+}
 
 /** Projektname aus dem Dateinamen: „HandyPutz-1.4.apk“ → „HandyPutz“ */
 fun projectOf(file: String) = file.substringBeforeLast('.').replace(Regex("[-_ ]?v?\\d+(\\.\\d+)*$"), "")
 
 /** Fertige Nachricht für Testpersonen */
 fun testMsg(project: String, links: List<Link>): String {
-    val files = links.filter { !it.name.contains("Infoseite") }
+    val files = links.filter { !it.name.contains("Infoseite") && !it.isMeta }
     val sb = StringBuilder("🧪 Hallo! Bitte teste meine App „$project“.\n\n")
     files.forEach { sb.append(it.name.substringAfter(' ')).append(":\n").append(it.url).append("\n\n") }
     if (files.any { it.url.endsWith(".apk") }) sb.append("📱 Android: Link öffnen → Datei laden → öffnen → installieren (falls gefragt: „Unbekannte Apps installieren“ erlauben).\n")
     if (files.any { it.url.endsWith(".exe") }) sb.append("💻 Windows: Datei laden → Doppelklick → bei der blauen Warnung „Weitere Informationen“ → „Trotzdem ausführen“.\n")
     links.firstOrNull { it.name.contains("Infoseite") }?.let { sb.append("ℹ️ Infos & Anleitung: ").append(it.url).append("\n") }
+    links.firstOrNull { it.url.startsWith("tester:") }?.let { sb.append("\n").append(it.name).append("\n") }
     sb.append("\nUpdates kommen automatisch. Danke für deine Rückmeldung! 🙏")
     return tr(sb.toString())
 }
@@ -104,6 +108,7 @@ object Gh {
                 val rn = r.getString("name")
                 val proj = out.map { it.project }.distinct().firstOrNull { rn.startsWith(it) } ?: rn
                 out += Link("📄 $rn – Infoseite", r.getString("html_url"), "Anleitung & alle Versionen", project = proj)
+                out += extras(full, proj)
             }
         }
         // Link-Zentrale selbst (fester Link, zeigt immer auf die neueste Version)
@@ -118,6 +123,26 @@ object Gh {
         }
         return out
     }
+
+    /**
+     * Projekt-eigene Erweiterung: Datei „link-zentrale.json“ im Update-Repo des Projekts.
+     * { "beschreibung": "…", "tester_text": "…", "links": [ {"name":"📘 Handbuch","url":"https://…","info":"…"} ] }
+     */
+    private fun extras(full: String, proj: String): List<Link> = try {
+        val (c, t) = get("https://raw.githubusercontent.com/$full/HEAD/link-zentrale.json")
+        if (c !in 200..299) emptyList() else {
+            val o = JSONObject(t)
+            buildList {
+                o.optString("beschreibung").takeIf { it.isNotBlank() }?.let { add(Link(it, "desc:$proj", project = proj)) }
+                o.optString("tester_text").takeIf { it.isNotBlank() }?.let { add(Link(it, "tester:$proj", project = proj)) }
+                val a = o.optJSONArray("links") ?: JSONArray()
+                for (i in 0 until a.length()) {
+                    val l = a.getJSONObject(i)
+                    if (l.optString("url").startsWith("http")) add(Link(l.optString("name", "🔗 Link"), l.getString("url"), l.optString("info"), project = proj))
+                }
+            }
+        }
+    } catch (_: Exception) { emptyList() }
 
     private fun icon(n: String) = when (n.substringAfterLast('.').lowercase()) { "apk" -> "📱"; "exe", "msi" -> "💻"; "pdf" -> "📄"; else -> "📦" }
     private fun size(b: Long) = if (b > 1048576) "%.1f MB".format(b / 1048576.0) else "${b / 1024} KB"
@@ -331,7 +356,7 @@ fun Screen() {
             ) { Text("🛠 Werkzeuge: Token • Repos • Ordner • Secrets", fontWeight = FontWeight.Bold) }
             Text("Download-Links", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
             Button(
-                onClick = { copy(ctx, (links + own).joinToString("\n\n") { it.name.substringAfter(' ') + ":\n" + it.url }) },
+                onClick = { copy(ctx, (links + own).filter { !it.isMeta }.joinToString("\n\n") { it.name.substringAfter(' ') + ":\n" + it.url }) },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5C8A), contentColor = Color.White)
             ) { Text("📋 Alle Links auf einmal kopieren", fontWeight = FontWeight.Bold) }
@@ -352,6 +377,7 @@ fun Screen() {
                                 OutlinedButton(onClick = { reviews = proj to repoP }) { Text("💬 Bewertungen", color = Color.White) }
                             }
                         }
+                        ls.firstOrNull { it.url.startsWith("desc:") }?.let { Text(it.name, color = Color(0xFFA9C3E0), fontSize = 14.sp) }
                         if (inf != null) {
                             val parts = buildList {
                                 if (inf.build.isNotBlank()) add(inf.build + " Build")
@@ -378,7 +404,7 @@ fun Screen() {
                     }
                 }
             }
-            items(ls, key = { it.url + it.own }) { l -> LinkCard(l) { own = own - l; Store.setOwn(ctx, own) } }
+            items(ls.filter { !it.isMeta }, key = { it.url + it.own }) { l -> LinkCard(l) { own = own - l; Store.setOwn(ctx, own) } }
         }
         item {
             OutlinedButton(onClick = { add = true }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("➕ Eigenen Link hinzufügen", color = Color(0xFF8FD3FF)) }

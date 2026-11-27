@@ -9,7 +9,11 @@ using System.Text.RegularExpressions;
 
 namespace LinkZentrale;
 
-public record Link(string Name, string Url, string Info = "", bool Own = false, string Project = "");
+public record Link(string Name, string Url, string Info = "", bool Own = false, string Project = "")
+{
+    /// <summary>Beschreibung / Tester-Text aus link-zentrale.json – keine eigene Karte</summary>
+    public bool IsMeta => Url.StartsWith("desc:") || Url.StartsWith("tester:");
+}
 public record Repo(string Full, string Name, bool Private, string Branch, string Html)
 {
     public override string ToString() => (Private ? "🔒 " : "🌍 ") + Name;
@@ -126,6 +130,7 @@ public static class Gh
                 var rn = repo["name"]!.ToString();
                 var proj = outL.Select(l => l.Project).Distinct().FirstOrDefault(p => p != "" && rn.StartsWith(p)) ?? rn;
                 outL.Add(new Link($"📄 {rn} – Infoseite", repo["html_url"]!.ToString(), "Anleitung & alle Versionen", false, proj));
+                outL.AddRange(await Extras(full, proj));
             }
         }
         // Link-Zentrale selbst (fester Link, zeigt immer auf die neueste Version)
@@ -140,6 +145,27 @@ public static class Gh
         return outL;
     }
 
+    /// <summary>Projekt-eigene Erweiterung: link-zentrale.json im Update-Repo (beschreibung, tester_text, links[])</summary>
+    static async Task<List<Link>> Extras(string full, string proj)
+    {
+        var l = new List<Link>();
+        try
+        {
+            var r = await Call("GET", $"https://raw.githubusercontent.com/{full}/HEAD/link-zentrale.json", auth: false);
+            if (r.Code is < 200 or >= 300) return l;
+            var o = JsonNode.Parse(r.Body)!;
+            var d = o["beschreibung"]?.ToString(); if (!string.IsNullOrWhiteSpace(d)) l.Add(new Link(d, "desc:" + proj, "", false, proj));
+            var t = o["tester_text"]?.ToString(); if (!string.IsNullOrWhiteSpace(t)) l.Add(new Link(t, "tester:" + proj, "", false, proj));
+            foreach (var x in o["links"]?.AsArray() ?? new JsonArray())
+            {
+                var u = x?["url"]?.ToString() ?? "";
+                if (u.StartsWith("http")) l.Add(new Link(x!["name"]?.ToString() ?? "🔗 Link", u, x["info"]?.ToString() ?? "", false, proj));
+            }
+        }
+        catch { }
+        return l;
+    }
+
     static string Size(long b) => b > 1048576 ? $"{b / 1048576.0:0.0} MB" : $"{b / 1024} KB";
 
     /// <summary>„HandyPutz-1.4.apk“ → „HandyPutz“</summary>
@@ -148,13 +174,15 @@ public static class Gh
     /// <summary>Fertige Nachricht für Testpersonen</summary>
     public static string TestMsg(string project, List<Link> links)
     {
-        var files = links.Where(l => !l.Name.Contains("Infoseite")).ToList();
+        var files = links.Where(l => !l.Name.Contains("Infoseite") && !l.IsMeta).ToList();
         var sb = new StringBuilder($"🧪 Hallo! Bitte teste meine App „{project}“.\r\n\r\n");
         foreach (var l in files) sb.Append(l.Name[(l.Name.IndexOf(' ') + 1)..]).Append(":\r\n").Append(l.Url).Append("\r\n\r\n");
         if (files.Any(l => l.Url.EndsWith(".apk"))) sb.Append("📱 Android: Link öffnen → Datei laden → öffnen → installieren (falls gefragt: „Unbekannte Apps installieren“ erlauben).\r\n");
         if (files.Any(l => l.Url.EndsWith(".exe"))) sb.Append("💻 Windows: Datei laden → Doppelklick → bei der blauen Warnung „Weitere Informationen“ → „Trotzdem ausführen“.\r\n");
         var info = links.FirstOrDefault(l => l.Name.Contains("Infoseite"));
         if (info != null) sb.Append("ℹ️ Infos & Anleitung: ").Append(info.Url).Append("\r\n");
+        var tt = links.FirstOrDefault(l => l.Url.StartsWith("tester:"));
+        if (tt != null) sb.Append("\r\n").Append(tt.Name).Append("\r\n");
         sb.Append("\r\nUpdates kommen automatisch. Danke für deine Rückmeldung! 🙏");
         return Tr.T(sb.ToString());
     }
