@@ -1,6 +1,8 @@
 # Regeln für Claude-Chats in diesem Repo (Link-Zentrale)
 
 - Jeder Projekt-Chat darf die Link-Zentrale für sein Projekt verbessern/erweitern.
+- **Kein Konto, keine Namen, keine Schlüssel fest im Code** (App soll öffentlich gehen können). Konto = `USER` (Android) / `Gh.USER` (Windows), App-Update-Repo kommt aus dem Build.
+- Neue Logik möglichst testbar machen und Tests ergänzen (`app/src/test/…/LogicTest.kt`, `windows.Tests/`).
 - Immer **Android (`app/`) und Windows (`windows/`) gleich** anpassen; neue Texte zusätzlich in `app/src/main/assets/en.json`.
 - Projekt-eigene Funktionen nur mit Bedingung auf den Projektnamen – nichts für andere Projekte kaputt machen.
 - Commit-Nachricht beginnt mit `[Projektname]`, Push auf `main`. Build (Actions) muss ✅ sein, sonst sofort reparieren.
