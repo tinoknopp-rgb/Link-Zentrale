@@ -13,8 +13,8 @@ android {
         targetSdk = 35
         versionCode = (System.getenv("VC") ?: "1").toInt()
         versionName = "1." + (System.getenv("VC") ?: "1")
-        // Schlüssel nur zum Anlegen von Feedback-Einträgen (GitHub-Secret FEEDBACK_TOKEN, optional)
-        buildConfigField("String", "FEEDBACK_TOKEN", "\"" + (System.getenv("FEEDBACK_TOKEN") ?: "") + "\"")
+        // Woher die App ihre eigenen Updates holt – kommt aus dem Build (kein Konto fest im Code)
+        buildConfigField("String", "APP_REPO", "\"" + (System.getenv("APP_REPO") ?: "") + "\"")
     }
     // Signatur-Schlüssel kommt als GitHub-Secret (KEYSTORE_B64) – nie im Code
     signingConfigs {
@@ -27,6 +27,12 @@ android {
     }
     buildTypes {
         debug { if (System.getenv("KEYSTORE_FILE") != null) signingConfig = signingConfigs.getByName("tino") }
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = if (System.getenv("KEYSTORE_FILE") != null) signingConfigs.getByName("tino") else signingConfigs.getByName("debug")
+        }
     }
     packaging { resources.excludes += "META-INF/*" }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -46,6 +52,8 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("com.google.zxing:core:3.5.3")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    testImplementation("junit:junit:4.13.2")
     implementation("com.goterl:lazysodium-android:5.1.0@aar")
     implementation("net.java.dev.jna:jna:5.14.0@aar")
 }

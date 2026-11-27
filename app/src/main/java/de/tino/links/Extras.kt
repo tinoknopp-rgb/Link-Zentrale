@@ -56,7 +56,7 @@ fun repoOf(ls: List<Link>): String? =
     ls.firstNotNullOfOrNull { Regex("github\\.com/([^/]+/[^/]+)/releases").find(it.url)?.groupValues?.get(1) }
 
 /** Quell-Repo (dort laufen die Builds) */
-fun srcRepo(project: String, repo: String) = if (project == "Link-Zentrale") "$USER/Link-Zentrale" else repo.removeSuffix("-Updates")
+fun srcRepo(@Suppress("UNUSED_PARAMETER") project: String, repo: String) = repo.removeSuffix("-Updates")
 
 /** Gehört ein Eintrag (Bewertung) zu diesem Projekt? Die Link-Zentrale teilt sich das Repo mit HandyPutz. */
 fun belongs(project: String?, title: String) = when {
@@ -92,12 +92,11 @@ object Stats {
                 val a = JSONArray(r.body); var sum = 0
                 for (i in 0 until a.length()) {
                     val rel = a.getJSONObject(i)
-                    val linkTag = rel.optString("tag_name").startsWith("link-")
-                    if (linkTag != (project == "Link-Zentrale")) continue
+                    if (rel.optString("tag_name").startsWith("link-")) continue   // alte Link-Zentrale-Versionen im HandyPutz-Repo
                     val as_ = rel.optJSONArray("assets") ?: continue
                     for (k in 0 until as_.length()) {
                         val x = as_.getJSONObject(k)
-                        if (project == "Link-Zentrale" || projectOf(x.getString("name")) == project) sum += x.optInt("download_count")
+                        if (projectOf(x.getString("name")) == project) sum += x.optInt("download_count")
                     }
                 }
                 sum
@@ -120,7 +119,8 @@ object Stats {
 
     /** Alle Projekte aus den zuletzt geladenen Links */
     fun all(c: Context): List<Info> {
-        if (Api.token.isBlank()) Api.token = toolSp(c).getString("token", "") ?: ""
+        if (Api.token.isBlank()) Api.token = Sec.token(c)
+        Acc.init(c)
         return Store.cache(c).filter { it.project.isNotBlank() }.groupBy { it.project }
             .mapNotNull { (p, ls) -> repoOf(ls)?.let { info(c, p, it) } }
             .also { save(c, it) }
@@ -263,15 +263,18 @@ fun QrDialog(title: String, url: String, onClose: () -> Unit) {
 // ======================= Feedback aus der Link-Zentrale =======================
 
 object Feedback {
-    /** Erst eingebauter Feedback-Schlüssel, sonst eigener Token, sonst null (→ per Nachricht teilen) */
-    private fun key(c: Context): String =
-        BuildConfig.FEEDBACK_TOKEN.ifBlank { toolSp(c).getString("token", "") ?: "" }
+    /** Nur der eigene, verschlüsselt gespeicherte Token – kein Schlüssel ist in der App eingebaut */
+    private fun key(c: Context): String = Sec.token(c)
+
+    /** Ohne Token: GitHub-Seite „Neuer Eintrag“ mit vorausgefülltem Text im Browser öffnen */
+    fun issueUrl(title: String, body: String) =
+        "https://github.com/$UPDATE_REPO/issues/new?title=" + Uri.encode("Link-Zentrale: $title") + "&body=" + Uri.encode(body)
 
     fun device(c: Context) = "App: Link-Zentrale 1.${versionCode(c)} • Android ${Build.VERSION.RELEASE} • ${Build.MANUFACTURER} ${Build.MODEL}"
 
     /** true = gesendet, false = kein Zugang */
     fun send(c: Context, title: String, body: String): Boolean {
-        val k = key(c); if (k.isBlank()) return false
+        val k = key(c); if (k.isBlank() || UPDATE_REPO.isBlank()) return false
         val old = Api.token
         return try {
             Api.token = k
@@ -314,6 +317,7 @@ fun FeedbackDialog(onClose: () -> Unit) {
                     status = "⏳ Sende …"
                     val ok = withContext(Dispatchers.IO) { Feedback.send(ctx, title.trim(), text) }
                     if (ok) { toast(ctx, tr("✅ Danke! Feedback gesendet")); onClose() }
+                    else if (UPDATE_REPO.isNotBlank()) { open(ctx, Feedback.issueUrl(title.trim(), text + "\n\n---\n" + Feedback.device(ctx))); onClose() }
                     else { status = "Kein Feedback-Zugang – bitte per Nachricht senden"; share(ctx, "Link-Zentrale $title\n\n$text\n\n${Feedback.device(ctx)}") }
                 }
             }) { Text("Senden") }
@@ -328,6 +332,7 @@ class LinkApp : Application() {
     override fun onCreate() {
         super.onCreate()
         L.init(this)
+        Acc.init(this)
         val prev = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
             try {
@@ -364,12 +369,13 @@ object Guard {
 
     /** Neueste ältere Version der Link-Zentrale */
     fun previous(c: Context): Gh.Update? {
+        if (UPDATE_REPO.isBlank()) return null
         val r = Api.call("GET", "/repos/$UPDATE_REPO/releases?per_page=40")
         if (r.code !in 200..299) return null
         val a = JSONArray(r.body); val cur = versionCode(c)
         for (i in 0 until a.length()) {
             val o = a.getJSONObject(i); val tag = o.optString("tag_name")
-            if (!tag.startsWith("link-v")) continue
+            if (o.optBoolean("draft") || o.optBoolean("prerelease")) continue
             val vc = Regex("(\\d+)$").find(tag)?.groupValues?.get(1)?.toIntOrNull() ?: continue
             if (vc >= cur) continue
             val as_ = o.optJSONArray("assets") ?: continue

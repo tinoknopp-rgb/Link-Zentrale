@@ -46,6 +46,13 @@ public static class Store
         }
     }
 
+    /// <summary>Gewähltes GitHub-Konto</summary>
+    public static string Owner
+    {
+        get { try { return File.ReadAllText(F("owner.txt")).Trim(); } catch { return ""; } }
+        set { Directory.CreateDirectory(Dir); File.WriteAllText(F("owner.txt"), value.Trim().Replace("https://github.com/", "").Trim('/')); }
+    }
+
     public static List<Link> Load(string name)
     {
         try { return JsonSerializer.Deserialize<List<Link>>(File.ReadAllText(F(name))) ?? new(); } catch { return new(); }
@@ -59,9 +66,12 @@ public static class Store
 
 public static class Gh
 {
-    public const string USER = "tinoknopp-rgb";
-    public const string UPDATE_REPO = USER + "/HandyPutz-Updates";
-    public const string TOKEN_URL = "https://github.com/settings/tokens/new?description=Link-Zentrale-PC&scopes=repo,workflow,delete_repo";
+    /// <summary>Gewähltes Konto (wird gespeichert, nichts fest im Code)</summary>
+    public static string USER => Store.Owner;
+    public static string UPDATE_REPO => Secrets.APP_REPO;
+    /// <summary>Nur nötige Rechte; „delete_repo“ nur wer Repos löschen will</summary>
+    public const string TOKEN_URL = "https://github.com/settings/tokens/new?description=Link-Zentrale-PC&scopes=repo,workflow";
+    public const string TOKEN_URL_DELETE = "https://github.com/settings/tokens/new?description=Link-Zentrale-PC&scopes=repo,workflow,delete_repo";
 
     static readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(60) };
     public static string Token = "";
@@ -103,6 +113,7 @@ public static class Gh
     // ---------------- Öffentliche Download-Links ----------------
     public static async Task<List<Link>> Downloads()
     {
+        if (USER == "") return new();
         var r = await Call("GET", $"/users/{USER}/repos?per_page=100&sort=pushed", auth: false);
         if (r.Code is < 200 or >= 300) throw new Exception($"GitHub nicht erreichbar ({r.Code})");
         var outL = new List<Link>();
@@ -118,7 +129,6 @@ public static class Gh
             {
                 var name = a!["name"]!.ToString();
                 if (!Regex.IsMatch(name, @"\.(apk|zip|exe|msi|pdf)$", RegexOptions.IgnoreCase)) continue;
-                if (name.StartsWith("Link-Zentrale")) continue;
                 var size = a["size"]!.GetValue<long>();
                 var relName = rel["name"]?.ToString();
                 outL.Add(new Link(Icon(name) + " " + Path.GetFileNameWithoutExtension(name),
@@ -133,15 +143,6 @@ public static class Gh
                 outL.AddRange(await Extras(full, proj));
             }
         }
-        // Link-Zentrale selbst (fester Link, zeigt immer auf die neueste Version)
-        var lz = await Call("GET", $"/repos/{UPDATE_REPO}/releases/tags/link-zentrale", auth: false);
-        if (lz.Code is >= 200 and < 300)
-            foreach (var a in J(lz)["assets"]!.AsArray())
-            {
-                var n = a!["name"]!.ToString();
-                outL.Add(new Link(Icon(n) + " " + n, $"https://github.com/{UPDATE_REPO}/releases/download/link-zentrale/{n}",
-                    (n.EndsWith(".exe") ? "Windows" : "Android") + " • " + Size(a["size"]!.GetValue<long>()), false, "Link-Zentrale"));
-            }
         return outL;
     }
 
@@ -169,7 +170,7 @@ public static class Gh
     static string Size(long b) => b > 1048576 ? $"{b / 1048576.0:0.0} MB" : $"{b / 1024} KB";
 
     /// <summary>„HandyPutz-1.4.apk“ → „HandyPutz“</summary>
-    public static string ProjectOf(string file) => Regex.Replace(Path.GetFileNameWithoutExtension(file), @"[-_ ]?v?\d+(\.\d+)*$", "");
+    public static string ProjectOf(string file) => Logic.ProjectOf(file);
 
     /// <summary>Fertige Nachricht für Testpersonen</summary>
     public static string TestMsg(string project, List<Link> links)
@@ -194,18 +195,17 @@ public static class Gh
 
     public static async Task<AppUpdate?> SelfUpdate()
     {
+        if (UPDATE_REPO == "") return null;
         var r = await Call("GET", $"/repos/{UPDATE_REPO}/releases?per_page=30", auth: false);
         if (r.Code is < 200 or >= 300) return null;
         foreach (var o in J(r).AsArray())
         {
             var tag = o!["tag_name"]!.ToString();
-            if (!tag.StartsWith("link-v")) continue;
-            var m = Regex.Match(tag, @"(\d+)$");
-            if (!m.Success) continue;
-            var vc = int.Parse(m.Groups[1].Value);
+            if (o["draft"]?.GetValue<bool>() == true || o["prerelease"]?.GetValue<bool>() == true) continue;
+            if (Logic.TagCode(tag) is not int vc) continue;
             if (vc <= CurrentCode) return null;
             foreach (var a in o["assets"]!.AsArray())
-                if (a!["name"]!.ToString().EndsWith(".exe"))
+                if (a!["name"]!.ToString() == "Link-Zentrale.exe")
                     return new AppUpdate(vc, o["name"]?.ToString() ?? tag, a["browser_download_url"]!.ToString());
         }
         return null;
@@ -416,12 +416,9 @@ public static class Gh
     }
 
     /// <summary>Die Link-Zentrale teilt sich das Update-Repo mit HandyPutz → Einträge nach Titel trennen</summary>
-    public static bool Belongs(string? project, string title) =>
-        project == null || (project == "Link-Zentrale" ? title.StartsWith("Link-Zentrale") : !title.StartsWith("Link-Zentrale"));
-
-    public static string SrcRepo(string project, string repo) => project == "Link-Zentrale" ? USER + "/Link-Zentrale" : (repo.EndsWith("-Updates") ? repo[..^8] : repo);
-
-    public static int Stars(string t) => t.Count(ch => ch == '★');
+    public static bool Belongs(string? project, string title) => Logic.Belongs(project, title);
+    public static string SrcRepo(string project, string repo) => Logic.SrcRepo(repo);
+    public static int Stars(string t) => Logic.Stars(t);
 
     /// <summary>Statistik je Projekt: neu, Sterne, offene Fehler, Downloads, letzter Build</summary>
     public static async Task<Info> ProjectInfo(string project, string repo)
@@ -436,10 +433,9 @@ public static class Gh
             if (r.Code is >= 200 and < 300)
                 foreach (var rel in J(r).AsArray())
                 {
-                    var linkTag = rel!["tag_name"]!.ToString().StartsWith("link-");
-                    if (linkTag != (project == "Link-Zentrale")) continue;
+                    if (rel!["tag_name"]!.ToString().StartsWith("link-")) continue;   // alte Link-Zentrale-Versionen im HandyPutz-Repo
                     foreach (var a in rel["assets"]!.AsArray())
-                        if (project == "Link-Zentrale" || ProjectOf(a!["name"]!.ToString()) == project) dl += a!["download_count"]!.GetValue<int>();
+                        if (ProjectOf(a!["name"]!.ToString()) == project) dl += a!["download_count"]!.GetValue<int>();
                 }
         }
         catch { }
@@ -461,11 +457,15 @@ public static class Gh
 
     // ---------------- Feedback aus der Link-Zentrale ----------------
 
-    /// <summary>true = gesendet; false = kein Zugang (dann per E-Mail)</summary>
+    /// <summary>Ohne Token: GitHub-Seite „Neuer Eintrag“ mit vorausgefülltem Text</summary>
+    public static string IssueUrl(string title, string body) =>
+        $"https://github.com/{UPDATE_REPO}/issues/new?title={Uri.EscapeDataString("Link-Zentrale: " + title)}&body={Uri.EscapeDataString(body)}";
+
+    /// <summary>true = gesendet; false = kein Zugang (dann im Browser) – nur der eigene Token, kein eingebauter Schlüssel</summary>
     public static async Task<bool> SendFeedback(string title, string body)
     {
-        var key = Secrets.FEEDBACK != "" ? Secrets.FEEDBACK : Token;
-        if (key == "") return false;
+        var key = Token;
+        if (key == "" || UPDATE_REPO == "") return false;
         var old = Token;
         try
         {
@@ -481,10 +481,13 @@ public static class Gh
         finally { Token = old; }
     }
 
-    public static string Kind(string t) =>
-        t.Contains("Bewertung", StringComparison.OrdinalIgnoreCase) || t.Contains('★') || t.Contains("⭐") ? "⭐" :
-        t.Contains("Vorschlag", StringComparison.OrdinalIgnoreCase) || t.Contains("💡") ? "💡" :
-        t.Contains("Fehler", StringComparison.OrdinalIgnoreCase) || t.Contains("Absturz", StringComparison.OrdinalIgnoreCase) || t.Contains("🐞") ? "🐞" : "💬";
+    public static string Kind(string t) => Logic.Kind(t);
+
+    /// <summary>Login-Name zum Token</summary>
+    public static async Task<string?> Login()
+    {
+        try { var r = await Call("GET", "/user"); return r.Code == 200 ? J(r)["login"]?.ToString() : null; } catch { return null; }
+    }
 }
 
 /// <summary>Merkt sich pro Eintrag die gelesene Anzahl Antworten → „neu“-Zähler</summary>

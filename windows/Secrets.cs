@@ -1,7 +1,8 @@
 namespace LinkZentrale;
 
-/// <summary>Wird beim Bauen aus dem GitHub-Secret FEEDBACK_TOKEN gefüllt (nur zum Anlegen von Feedback-Einträgen)</summary>
+/// <summary>Wird beim Bauen gefüllt – im Code steht kein Konto und kein Schlüssel</summary>
 public static class Secrets
 {
-    public const string FEEDBACK = "";
+    /// <summary>Woher die App ihre eigenen Updates holt (Besitzer des Repos + „/Link-Zentrale-Updates“)</summary>
+    public const string APP_REPO = "";
 }

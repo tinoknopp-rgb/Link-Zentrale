@@ -1,6 +1,7 @@
 name: App bauen
 on:
   push:
+    paths-ignore: ['**.md', 'chats/**', 'dateien/**']
   workflow_dispatch:
 permissions:
   contents: write
@@ -9,7 +10,8 @@ env:
   KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
   KEY_ALIAS: tino
   UT: ${{ secrets.UPDATE_TOKEN }}
-  FEEDBACK_TOKEN: ${{ secrets.FEEDBACK_TOKEN }}
+  # Woher die App ihre Updates holt: Besitzer dieses Repos + /Link-Zentrale-Updates (kein Konto fest im Code)
+  APP_REPO: ${{ github.repository_owner }}/Link-Zentrale-Updates
 jobs:
   android:
     runs-on: ubuntu-latest
@@ -22,13 +24,10 @@ jobs:
       - name: Signatur-Schlüssel aus Secret
         run: |
           if [ -n "$KS" ]; then echo "$KS" | base64 -d > "$RUNNER_TEMP/tino.jks"; echo "KEYSTORE_FILE=$RUNNER_TEMP/tino.jks" >> $GITHUB_ENV; fi
-      - name: Secrets prüfen
-        run: |
-          echo "KEYSTORE_B64: ${#KS} Zeichen"; echo "KEYSTORE_PASS: ${#KEYSTORE_PASS} Zeichen"; echo "UPDATE_TOKEN: ${#UT} Zeichen"
       - name: Versionsnummer
         run: echo "VC=$((GITHUB_RUN_NUMBER + 1))" >> $GITHUB_ENV
-      - name: APK bauen
-        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon --stacktrace && cp app/build/outputs/apk/debug/app-debug.apk Link-Zentrale.apk
+      - name: Tests + APK (Release, verkleinert)
+        run: chmod +x gradlew && ./gradlew testDebugUnitTest assembleRelease --no-daemon --stacktrace && cp app/build/outputs/apk/release/app-release.apk Link-Zentrale.apk
       - uses: actions/upload-artifact@v4
         with:
           name: Link-Zentrale-APK
@@ -41,11 +40,13 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      - name: Tests
+        run: dotnet test windows.Tests/LinkZentrale.Tests.csproj
       - name: EXE bauen
         shell: bash
         run: |
           VC=$((GITHUB_RUN_NUMBER + 1))
-          if [ -n "$FEEDBACK_TOKEN" ]; then sed -i "s|FEEDBACK = \"\"|FEEDBACK = \"$FEEDBACK_TOKEN\"|" windows/Secrets.cs; fi
+          sed -i "s|APP_REPO = \"\"|APP_REPO = \"$APP_REPO\"|" windows/Secrets.cs
           dotnet publish windows/LinkZentrale.csproj -c Release -p:Version=1.$VC -o out
           cp out/Link-Zentrale.exe Link-Zentrale.exe
       - uses: actions/upload-artifact@v4
@@ -63,36 +64,33 @@ jobs:
           merge-multiple: true
       - name: Versionsnummer
         run: echo "VC=$((GITHUB_RUN_NUMBER + 1))" >> $GITHUB_ENV
-      - name: Als Update veröffentlichen (öffentliches Update-Repo)
+      - name: Neue Version im eigenen Update-Repo
         if: env.KS != '' && env.UT != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: ${{ env.APP_REPO }}
+          token: ${{ secrets.UPDATE_TOKEN }}
+          tag_name: v1.${{ env.VC }}
+          name: Link-Zentrale 1.${{ env.VC }}
+          body: |
+            📱 Android: Link-Zentrale.apk
+            💻 Windows: Link-Zentrale.exe
+            Fester Link (immer neueste Version): …/releases/latest/download/Link-Zentrale.apk bzw. .exe
+          files: |
+            Link-Zentrale.apk
+            Link-Zentrale.exe
+          make_latest: true
+      # ---- Übergang: ältere Link-Zentralen (bis 1.20) suchen Updates noch im HandyPutz-Repo ----
+      - name: Übergang – alte Versionen versorgen
+        if: env.KS != '' && env.UT != '' && github.repository_owner == 'tinoknopp-rgb'
         uses: softprops/action-gh-release@v2
         with:
           repository: tinoknopp-rgb/HandyPutz-Updates
           token: ${{ secrets.UPDATE_TOKEN }}
           tag_name: link-v1.${{ env.VC }}
           name: Link-Zentrale 1.${{ env.VC }}
-          body: |
-            Neue Version der Link-Zentrale
-            📱 Android: Link-Zentrale.apk
-            💻 Windows: Link-Zentrale.exe
+          body: Übergangs-Version – neue Updates kommen aus Link-Zentrale-Updates
           files: |
             Link-Zentrale.apk
             Link-Zentrale.exe
-          make_latest: false
-      - name: Fester Test-Link (immer neueste Version)
-        if: env.KS != '' && env.UT != ''
-        uses: softprops/action-gh-release@v2
-        with:
-          repository: tinoknopp-rgb/HandyPutz-Updates
-          token: ${{ secrets.UPDATE_TOKEN }}
-          tag_name: link-zentrale
-          name: Link-Zentrale (immer aktuell)
-          body: |
-            Fester Link zur jeweils neuesten Link-Zentrale (zum Weitergeben an Testpersonen)
-            📱 Android: https://github.com/tinoknopp-rgb/HandyPutz-Updates/releases/download/link-zentrale/Link-Zentrale.apk
-            💻 Windows: https://github.com/tinoknopp-rgb/HandyPutz-Updates/releases/download/link-zentrale/Link-Zentrale.exe
-          files: |
-            Link-Zentrale.apk
-            Link-Zentrale.exe
-          overwrite_files: true
           make_latest: false

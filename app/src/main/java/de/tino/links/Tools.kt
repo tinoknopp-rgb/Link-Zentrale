@@ -66,6 +66,9 @@ object Api {
         })
     }
 
+    /** Login-Name zum gespeicherten Token */
+    fun login(): String? = try { JSONObject(call("GET", "/user").body).optString("login").ifBlank { null } } catch (_: Exception) { null }
+
     fun me(): String {
         val r = need(call("GET", "/user"), "Anmeldung")
         return "✅ Angemeldet als ${JSONObject(r.body).getString("login")} • Rechte: ${r.scopes.ifBlank { "–" }}"
@@ -210,9 +213,9 @@ object Api {
     }
 }
 
-fun toolSp(c: Context) = c.getSharedPreferences("tools", Context.MODE_PRIVATE)
-private fun sp(c: Context) = c.getSharedPreferences("tools", Context.MODE_PRIVATE)
-const val TOKEN_URL = "https://github.com/settings/tokens/new?description=Link-Zentrale&scopes=repo,workflow,delete_repo"
+/** Nur so viele Rechte wie nötig: Repos + Builds. „delete_repo“ nur wer Repos löschen will (Maske 6). */
+const val TOKEN_URL = "https://github.com/settings/tokens/new?description=Link-Zentrale&scopes=repo,workflow"
+const val TOKEN_URL_DELETE = "https://github.com/settings/tokens/new?description=Link-Zentrale&scopes=repo,workflow,delete_repo"
 
 // ======================= Oberfläche: Werkzeuge =======================
 
@@ -262,7 +265,7 @@ fun ToolsScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     BackHandler(onBack = onBack)
 
-    var token by remember { mutableStateOf(sp(ctx).getString("token", "") ?: "") }
+    var token by remember { mutableStateOf(Sec.token(ctx)) }
     var status by remember { mutableStateOf(if (token.isBlank()) "Zuerst Token eintragen (Maske 1)" else "…") }
     var repos by remember { mutableStateOf<List<Api.Repo>>(emptyList()) }
     var repo by remember { mutableStateOf<Api.Repo?>(null) }
@@ -302,16 +305,24 @@ fun ToolsScreen(onBack: () -> Unit) {
             Field(token, "Token hier einfügen (ghp_…)", secret = true) { token = it.trim() }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Btn("💾 Speichern", modifier = Modifier.weight(1f)) {
-                    sp(ctx).edit().putString("token", token).apply(); Api.token = token
-                    run("Prüfen", { loadRepos() }) { Api.me() }
+                    Sec.setToken(ctx, token); Api.token = token
+                    run("Prüfen", { loadRepos() }) { Api.me().also { if (USER.isBlank()) Api.login()?.let { l -> scope.launch { Acc.set(ctx, l) } } } }
                 }
                 Btn("📋 Kopieren", modifier = Modifier.weight(1f)) { if (token.isNotBlank()) copy(ctx, token) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { open(ctx, "https://github.com/settings/tokens") }, modifier = Modifier.weight(1f)) { Text("Token-Liste / löschen", color = BLUE) }
-                OutlinedButton(onClick = { token = ""; Api.token = ""; sp(ctx).edit().remove("token").apply(); repos = emptyList(); repo = null; status = "Token aus der App entfernt" },
+                OutlinedButton(onClick = { token = ""; Api.token = ""; Sec.setToken(ctx, ""); repos = emptyList(); repo = null; status = "Token aus der App entfernt" },
                     modifier = Modifier.weight(1f)) { Text("Aus App entfernen", color = PINK) }
             }
+        }
+
+        // Konto
+        Section("👤 Konto") {
+            var acc by remember { mutableStateOf(USER) }
+            Text("Diese App zeigt die Projekte dieses GitHub-Kontos.", color = SOFT, fontSize = 13.sp)
+            Field(acc, "GitHub-Konto (Name)") { acc = it.trim() }
+            Btn("Konto übernehmen") { if (acc.isNotBlank()) { Acc.set(ctx, acc); status = "✅ Konto: $acc" } }
         }
 
         // 2 — Repo wählen + alle Links
@@ -430,7 +441,6 @@ fun ToolsScreen(onBack: () -> Unit) {
         // 8 — Releases
         Section("8 📦 Versionen (Releases)") {
             var rels by remember(repo) { mutableStateOf<List<Api.Rel>>(emptyList()) }
-            Text("Tipp: Die Versionen von HandyPutz und Link-Zentrale liegen im Repo HandyPutz-Updates.", color = SOFT, fontSize = 13.sp)
             Btn("↻ Versionen von ${repo?.name ?: "…"} laden") { val r = repo; if (r != null) run("Versionen laden") { val l = Api.releases(r); scope.launch { rels = l }; "✅ ${l.size} Versionen" } }
             rels.forEach { v ->
                 Column(Modifier.padding(vertical = 4.dp)) {
@@ -458,6 +468,8 @@ fun ToolsScreen(onBack: () -> Unit) {
         // 6 — Repo löschen
         Section("6 🗑 Repo löschen") {
             Text("Löscht das in Maske 2 gewählte Repo endgültig. Zur Sicherheit musst du den Namen eintippen.", color = SOFT, fontSize = 13.sp)
+            Text("Braucht einen Token mit Recht „delete_repo“:", color = SOFT, fontSize = 13.sp)
+            OutlinedButton(onClick = { open(ctx, TOKEN_URL_DELETE) }, modifier = Modifier.fillMaxWidth()) { Text("🔑 Token mit Lösch-Recht erstellen", color = BLUE) }
             Btn("Repo ${repo?.name ?: ""} löschen", PINK) {
                 val r = repo
                 if (r != null) confirm = Triple("Repo ${r.full} endgültig löschen?", r.name, { run("Repo löschen", { repo = null; loadRepos() }) { Api.deleteRepo(r.full) } })

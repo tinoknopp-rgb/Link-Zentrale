@@ -112,6 +112,7 @@ public class MainForm : Form
         Load += async (_, _) =>
         {
             Gh.Token = Store.Token;
+            await EnsureOwner();
             await RefreshAll();
             _ = Crash.SendPending();
             if (Gh.Token != "") { await Run("Anmelden", Gh.Me); await LoadRepos(); }
@@ -234,8 +235,8 @@ public class MainForm : Form
         s.Controls.Add(Row(
             Btn("👤 Mein Konto", () => Open($"https://github.com/{Gh.USER}")),
             Btn("📚 Alle Repos", () => Open($"https://github.com/{Gh.USER}?tab=repositories")),
-            Btn("⚙️ Builds", () => Open($"https://github.com/{Gh.USER}/HandyPutz/actions")),
-            Btn("📦 Versionen", () => Open($"https://github.com/{Gh.UPDATE_REPO}/releases"))));
+            Btn("🔔 Mitteilungen", () => Open("https://github.com/notifications")),
+            Btn("🔑 Tokens", () => Open("https://github.com/settings/tokens"))));
         s.Controls.Add(btnReviews);
         s.Controls.Add(Lbl("Download-Links", 14, true));
         s.Controls.Add(Wide("📋 Alle Links auf einmal kopieren", () =>
@@ -318,6 +319,16 @@ public class MainForm : Form
         linksPanel.ResumeLayout();
     }
 
+    /// <summary>Konto festlegen: aus dem Token, aus alten Daten oder durch Nachfragen</summary>
+    async Task EnsureOwner()
+    {
+        if (Store.Owner != "") return;
+        var guess = Gh.Token != "" ? await Gh.Login() : null;
+        guess ??= links.Select(l => System.Text.RegularExpressions.Regex.Match(l.Url, @"github\.com/([^/]+)/")).FirstOrDefault(m => m.Success)?.Groups[1].Value;
+        if (string.IsNullOrEmpty(guess)) guess = Prompt("Link-Zentrale", "Welches GitHub-Konto soll angezeigt werden? (Name)");
+        if (!string.IsNullOrWhiteSpace(guess)) Store.Owner = guess;
+    }
+
     async Task RefreshAll()
     {
         SetStatus("Aktualisiere …");
@@ -383,6 +394,18 @@ public class MainForm : Form
                 tbToken.Text = ""; Store.Token = ""; Gh.Token = ""; repos.Clear(); repo = null; cbRepo.Items.Clear(); SetStatus("Token aus der App entfernt");
             }, PINK)));
         s.Controls.Add(c1);
+
+        // Konto
+        var cA = Card("👤 Konto");
+        cA.Controls.Add(Lbl("Diese App zeigt die Projekte dieses GitHub-Kontos.", 9, false, SOFT));
+        var tbOwner = Txt("GitHub-Konto (Name)"); tbOwner.Text = Store.Owner;
+        cA.Controls.Add(tbOwner);
+        cA.Controls.Add(Wide("Konto übernehmen", async () =>
+        {
+            if (tbOwner.Text.Trim() == "") return;
+            Store.Owner = tbOwner.Text.Trim(); SetStatus("✅ Konto: " + Store.Owner); await RefreshAll();
+        }));
+        s.Controls.Add(cA);
 
         // 2 — Repo & Links
         var c2 = Card("2 📁 Repo & Links");
@@ -496,7 +519,6 @@ public class MainForm : Form
 
         // 7 — Releases
         var c7 = Card("7 📦 Versionen (Releases)");
-        c7.Controls.Add(Lbl("Tipp: Die Versionen von HandyPutz und Link-Zentrale liegen im Repo HandyPutz-Updates.", 9, false, SOFT));
         c7.Controls.Add(Target());
         c7.Controls.Add(Wide("↻ Versionen laden", async () => await LoadRels()));
         c7.Controls.Add(relsPanel);
@@ -505,6 +527,8 @@ public class MainForm : Form
         // 8 — Repo löschen
         var c8 = Card("8 🗑 Repo löschen");
         c8.Controls.Add(Lbl("Löscht das in Maske 2 gewählte Repo endgültig. Zur Sicherheit musst du den Namen eintippen.", 9, false, SOFT));
+        c8.Controls.Add(Lbl("Braucht einen Token mit Recht „delete_repo“:", 9, false, SOFT));
+        c8.Controls.Add(Btn("🔑 Token mit Lösch-Recht erstellen", () => Open(Gh.TOKEN_URL_DELETE), SOFT));
         c8.Controls.Add(Target());
         c8.Controls.Add(Wide("Repo löschen", async () =>
         {

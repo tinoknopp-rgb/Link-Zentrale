@@ -39,9 +39,10 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-const val USER = "tinoknopp-rgb"
-// Updates der Link-Zentrale liegen im öffentlichen Update-Repo mit Kennzeichen „link-v…“
-const val UPDATE_REPO = "$USER/HandyPutz-Updates"
+/** Gewähltes GitHub-Konto (keine festen Daten in der App) */
+val USER: String get() = Acc.owner
+/** Woher diese App selbst ihre Updates holt – wird beim Bauen gesetzt (Besitzer des Repos + „/Link-Zentrale-Updates“) */
+val UPDATE_REPO: String get() = BuildConfig.APP_REPO
 
 data class Link(val name: String, val url: String, val info: String = "", val own: Boolean = false, val project: String = "") {
     /** Beschreibung / Tester-Text aus link-zentrale.json – keine eigene Karte */
@@ -82,6 +83,7 @@ object Gh {
 
     /** Alle öffentlichen Repos mit fertigen Dateien (APK, ZIP, EXE …) – Links zeigen immer auf die neueste Version */
     fun downloads(): List<Link> {
+        if (USER.isBlank()) return emptyList()
         val (code, txt) = get("https://api.github.com/users/$USER/repos?per_page=100&sort=pushed")
         if (code !in 200..299) throw Exception("GitHub nicht erreichbar ($code)")
         val repos = JSONArray(txt)
@@ -98,7 +100,6 @@ object Gh {
                 val a = assets.getJSONObject(k)
                 val name = a.getString("name")
                 if (!name.matches(Regex(".*\\.(apk|zip|exe|msi|pdf)$", RegexOption.IGNORE_CASE))) continue
-                if (name.startsWith("Link-Zentrale")) continue
                 val label = name.substringBeforeLast('.')
                 out += Link(
                     "${icon(name)} $label", "https://github.com/$full/releases/latest/download/$name",
@@ -110,16 +111,6 @@ object Gh {
                 val proj = out.map { it.project }.distinct().firstOrNull { rn.startsWith(it) } ?: rn
                 out += Link("📄 $rn – Infoseite", r.getString("html_url"), "Anleitung & alle Versionen", project = proj)
                 out += extras(full, proj)
-            }
-        }
-        // Link-Zentrale selbst (fester Link, zeigt immer auf die neueste Version)
-        val (lc, lt) = get("https://api.github.com/repos/$UPDATE_REPO/releases/tags/link-zentrale")
-        if (lc in 200..299) {
-            val a = JSONObject(lt).optJSONArray("assets") ?: JSONArray()
-            for (k in 0 until a.length()) {
-                val n = a.getJSONObject(k).getString("name")
-                out += Link("${icon(n)} $n", "https://github.com/$UPDATE_REPO/releases/download/link-zentrale/$n",
-                    (if (n.endsWith(".exe")) "Windows" else "Android") + " • ${size(a.getJSONObject(k).optLong("size"))}", project = "Link-Zentrale")
             }
         }
         return out
@@ -150,15 +141,16 @@ object Gh {
 
     data class Update(val code: Int, val name: String, val url: String)
 
-    /** Neuere Version dieser App? (Releases mit Tag „link-v1.N“) */
+    /** Neuere Version dieser App? (Releases im App-Update-Repo, Tag „v1.N“) */
     fun selfUpdate(current: Long): Update? {
+        if (UPDATE_REPO.isBlank()) return null
         val (code, txt) = get("https://api.github.com/repos/$UPDATE_REPO/releases?per_page=30")
         if (code !in 200..299) return null
         val all = JSONArray(txt)
         for (i in 0 until all.length()) {
             val o = all.getJSONObject(i)
             val tag = o.optString("tag_name")
-            if (!tag.startsWith("link-v")) continue
+            if (o.optBoolean("draft") || o.optBoolean("prerelease")) continue
             val vc = Regex("(\\d+)$").find(tag)?.groupValues?.get(1)?.toIntOrNull() ?: continue
             if (vc <= current) return null
             val assets = o.optJSONArray("assets") ?: continue
@@ -221,6 +213,7 @@ fun versionCode(c: Context): Long = try {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Acc.init(this)
         if (Guard.starting(this)) { startActivity(Intent(this, RescueActivity::class.java)); finish(); return }
         handle(intent)
         if (Build.VERSION.SDK_INT >= 33 && !Notify.allowed(this))
@@ -260,11 +253,11 @@ object Nav {
     var pick by mutableStateOf(false)
 }
 
-private val GITHUB = listOf(
+private fun githubLinks() = listOf(
     Link("👤 Mein Konto", "https://github.com/$USER"),
     Link("📚 Alle Repos", "https://github.com/$USER?tab=repositories"),
-    Link("⚙️ Builds", "https://github.com/$USER/HandyPutz/actions"),
-    Link("📦 Versionen", "https://github.com/$USER/HandyPutz-Updates/releases"),
+    Link("🔔 Mitteilungen", "https://github.com/notifications"),
+    Link("🔑 Tokens", "https://github.com/settings/tokens"),
 )
 
 @Composable
@@ -281,7 +274,8 @@ fun Screen() {
     var pick by remember { mutableStateOf(false) }
     var qrFor by remember { mutableStateOf<Pair<String, String>?>(null) }
     var feedback by remember { mutableStateOf(false) }
-    if (Api.token.isBlank()) Api.token = toolSp(ctx).getString("token", "") ?: ""
+    if (Api.token.isBlank()) Api.token = Sec.token(ctx)
+    if (USER.isBlank()) { AccountScreen(); return }
     fun countBadges() {
         scope.launch {
             val l = withContext(Dispatchers.IO) { try { Stats.all(ctx) } catch (_: Exception) { null } }
@@ -328,7 +322,7 @@ fun Screen() {
                 TextButton(onClick = { refresh() }) { Text("↻", fontSize = 26.sp, color = Color(0xFF8FD3FF)) }
             }
             Text("GitHub", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
-            GITHUB.chunked(2).forEach { row ->
+            githubLinks().chunked(2).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 10.dp)) {
                     row.forEach { g ->
                         Box(

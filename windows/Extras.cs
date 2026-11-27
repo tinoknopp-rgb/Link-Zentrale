@@ -109,6 +109,7 @@ public class FeedbackForm : Form
             var title = $"[{label}] {first}".Trim();
             status.Text = Tr.T("⏳ Sende …");
             if (await Gh.SendFeedback(title, tb.Text)) { MessageBox.Show(Tr.T("✅ Danke! Feedback gesendet")); Close(); }
+            else if (Gh.UPDATE_REPO != "") { Open(Gh.IssueUrl(title, tb.Text + "\r\n\r\n---\r\nLink-Zentrale 1." + Gh.CurrentCode + " (Windows)")); Close(); }
             else
             {
                 status.Text = Tr.T("Kein Feedback-Zugang – bitte per Nachricht senden");
