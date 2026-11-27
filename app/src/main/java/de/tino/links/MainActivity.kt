@@ -318,6 +318,7 @@ fun Screen() {
                     Text("Version 1.${versionCode(ctx)} • $status", color = Color(0xFFA9C3E0), fontSize = 13.sp)
                 }
                 TextButton(onClick = { L.set(ctx, !L.en) }, contentPadding = PaddingValues(4.dp)) { androidx.compose.material3.Text(if (L.en) "🇬🇧" else "🇩🇪", fontSize = 22.sp) }
+                if (UPDATE_REPO.isNotBlank()) TextButton(onClick = { open(ctx, "https://github.com/$UPDATE_REPO#readme") }, contentPadding = PaddingValues(4.dp)) { Text("❓", fontSize = 22.sp) }
                 TextButton(onClick = { feedback = true }, contentPadding = PaddingValues(4.dp)) { Text("⭐", fontSize = 22.sp) }
                 TextButton(onClick = { refresh() }) { Text("↻", fontSize = 26.sp, color = Color(0xFF8FD3FF)) }
             }

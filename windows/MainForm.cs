@@ -230,6 +230,7 @@ public class MainForm : Form
         var s = Stack();
         s.Controls.Add(Row(
             Btn("⭐ Feedback geben", () => { using var f = new FeedbackForm(); f.ShowDialog(this); }, Color.FromArgb(255, 201, 77)),
+            Btn("❓ Anleitung", () => { if (Gh.UPDATE_REPO != "") Open($"https://github.com/{Gh.UPDATE_REPO}#readme"); }, SOFT),
             Btn(Tr.En ? "🇩🇪 Deutsch" : "🇬🇧 English", () => Tr.Set(!Tr.En), SOFT)));
         s.Controls.Add(Lbl("GitHub", 14, true));
         s.Controls.Add(Row(
