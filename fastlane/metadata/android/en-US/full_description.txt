@@ -1,0 +1,9 @@
+<p>Link-Zentrale shows all public GitHub repos of an account that have a release – with download links that always point to the newest version.</p>
+<ul>
+<li>One tap sends testers a ready message with link and install guide, or shows a QR code</li>
+<li>Reviews, suggestions and bug reports (GitHub Issues): read, reply, close – with unread counter and notifications</li>
+<li>Downloads, average rating, open bugs and last build status per project</li>
+<li>With your own token: create repos, set Actions secrets (encrypted), create/delete folders, upload files, start/re-run builds, manage releases, change visibility and topics, delete repos</li>
+<li>Widget, German/English, self-update</li>
+</ul>
+<p>No account or key is built in. You choose the account; your token stays encrypted on your device.</p>

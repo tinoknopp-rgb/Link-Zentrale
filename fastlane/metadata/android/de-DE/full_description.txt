@@ -1,0 +1,9 @@
+<p>Die Link-Zentrale zeigt alle öffentlichen GitHub-Repos eines Kontos mit Release – mit Download-Links, die immer auf die neueste Version zeigen.</p>
+<ul>
+<li>Mit einem Tipp eine fertige Nachricht mit Link und Installationsanleitung an Tester senden oder einen QR-Code zeigen</li>
+<li>Bewertungen, Vorschläge und Fehlerberichte (GitHub-Issues) lesen, beantworten, erledigen – mit Zähler und Benachrichtigung</li>
+<li>Downloads, Durchschnittsbewertung, offene Fehler und Build-Status je Projekt</li>
+<li>Mit eigenem Token: Repos anlegen, Actions-Secrets verschlüsselt setzen, Ordner anlegen/löschen, Dateien hochladen, Builds starten, Versionen verwalten, Sichtbarkeit und Themen ändern, Repos löschen</li>
+<li>Widget, Deutsch/Englisch, Selbst-Update</li>
+</ul>
+<p>Kein Konto und kein Schlüssel ist fest eingebaut. Du wählst das Konto; dein Token bleibt verschlüsselt auf deinem Gerät.</p>

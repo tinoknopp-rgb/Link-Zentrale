@@ -5,6 +5,8 @@ plugins {
 }
 
 android {
+    // Für IzzyOnDroid/F-Droid: keinen verschlüsselten Google-Abhängigkeitsblock in die APK schreiben
+    dependenciesInfo { includeInApk = false; includeInBundle = false }
     namespace = "de.tino.links"
     compileSdk = 35
     defaultConfig {
