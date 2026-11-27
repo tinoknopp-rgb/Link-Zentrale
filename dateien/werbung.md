@@ -1,7 +1,7 @@
 # 📣 Link-Zentrale bekannt machen – fertige Texte
 
 **Links für alle Beiträge**
-- Projekt (Code): https://github.com/tinoknopp-rgb/Link-Zentrale *(erst öffentlich schalten – Link-Zentrale → 🛠 Werkzeuge → Maske 10)*
+- Projekt (Code): https://github.com/tinoknopp-rgb/Link-Zentrale *(erst öffentlich schalten – Link-Zentrale → 🛠 Werkzeuge → Maske 9)*
 - Download + Anleitung: https://github.com/tinoknopp-rgb/Link-Zentrale-Updates
 - APK: https://github.com/tinoknopp-rgb/Link-Zentrale-Updates/releases/latest/download/Link-Zentrale.apk
 
@@ -9,7 +9,7 @@
 
 ---
 
-## 1) Repo-Einstellungen (Maske 10)
+## 1) Repo-Einstellungen (Maske 9)
 - **Beschreibung:** `Your GitHub releases, testers and reviews in one app – Android + Windows, self-updating, no account built in.`
 - **Themen:** `android, windows, github, github-releases, release-management, beta-testing, developer-tools, kotlin, jetpack-compose, dotnet, qr-code, open-source`
 - **Webseite:** `https://github.com/tinoknopp-rgb/Link-Zentrale-Updates`

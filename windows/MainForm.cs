@@ -479,7 +479,7 @@ public class MainForm : Form
         s.Controls.Add(c5);
 
         // 9 — Dateien hochladen
-        var c9 = Card("9 📤 Dateien hochladen");
+        var c9 = Card("6 📤 Dateien hochladen");
         c9.Controls.Add(Target());
         c9.Controls.Add(Lbl("Zielordner:", 9, false, SOFT));
         cbUpDir.Items.Add("(Hauptordner)"); cbUpDir.SelectedIndex = 0;
@@ -513,7 +513,7 @@ public class MainForm : Form
         s.Controls.Add(c9);
 
         // 6 — Builds
-        var c6 = Card("6 🚀 Builds");
+        var c6 = Card("7 🚀 Builds");
         c6.Controls.Add(Target());
         c6.Controls.Add(Row(
             Btn("🚀 Neu bauen", async () => { if (repo != null) { var r = repo; await Run("Build starten", () => Gh.Build(r)); } }),
@@ -522,14 +522,14 @@ public class MainForm : Form
         s.Controls.Add(c6);
 
         // 7 — Releases
-        var c7 = Card("7 📦 Versionen (Releases)");
+        var c7 = Card("8 📦 Versionen (Releases)");
         c7.Controls.Add(Target());
         c7.Controls.Add(Wide("↻ Versionen laden", async () => await LoadRels()));
         c7.Controls.Add(relsPanel);
         s.Controls.Add(c7);
 
         // 10 — Repo-Einstellungen
-        var c10 = Card("10 ⚙️ Repo-Einstellungen");
+        var c10 = Card("9 ⚙️ Repo-Einstellungen");
         c10.Controls.Add(Target());
         var chkPub = new CheckBox { Text = "🌍 Öffentlich", AutoSize = true, ForeColor = Color.White, Margin = new Padding(3, 6, 3, 6) };
         var tbMDesc = Txt("Beschreibung"); var tbTopics = Txt("Themen, mit Komma (z. B. android, github)"); var tbHome = Txt("Webseite (optional)");
@@ -555,7 +555,7 @@ public class MainForm : Form
         s.Controls.Add(c10);
 
         // 8 — Repo löschen
-        var c8 = Card("8 🗑 Repo löschen");
+        var c8 = Card("10 🗑 Repo löschen");
         c8.Controls.Add(Lbl("Löscht das in Maske 2 gewählte Repo endgültig. Zur Sicherheit musst du den Namen eintippen.", 9, false, SOFT));
         c8.Controls.Add(Lbl("Braucht einen Token mit Recht „delete_repo“:", 9, false, SOFT));
         c8.Controls.Add(Btn("🔑 Token mit Lösch-Recht erstellen", () => Open(Gh.TOKEN_URL_DELETE), SOFT));

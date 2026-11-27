@@ -231,7 +231,7 @@ object Api {
     }
 }
 
-/** Nur so viele Rechte wie nötig: Repos + Builds. „delete_repo“ nur wer Repos löschen will (Maske 6). */
+/** Nur so viele Rechte wie nötig: Repos + Builds. „delete_repo“ nur wer Repos löschen will (Maske 10). */
 const val TOKEN_URL = "https://github.com/settings/tokens/new?description=Link-Zentrale&scopes=repo,workflow"
 const val TOKEN_URL_DELETE = "https://github.com/settings/tokens/new?description=Link-Zentrale&scopes=repo,workflow,delete_repo"
 
@@ -419,8 +419,8 @@ fun ToolsScreen(onBack: () -> Unit) {
             }
         }
 
-        // 9 — Dateien hochladen
-        Section("9 📤 Dateien hochladen") {
+        // 6 — Dateien hochladen
+        Section("6 📤 Dateien hochladen") {
             var dir by remember(repo) { mutableStateOf("") }
             var picked by remember { mutableStateOf<List<Uri>>(emptyList()) }
             val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { picked = it }
@@ -487,8 +487,8 @@ fun ToolsScreen(onBack: () -> Unit) {
             }
         }
 
-        // 10 — Einstellungen
-        Section("10 ⚙️ Repo-Einstellungen") {
+        // 9 — Einstellungen
+        Section("9 ⚙️ Repo-Einstellungen") {
             var priv by remember(repo) { mutableStateOf(repo?.private ?: true) }
             var desc by remember(repo) { mutableStateOf("") }
             var topics by remember(repo) { mutableStateOf("") }
@@ -516,8 +516,8 @@ fun ToolsScreen(onBack: () -> Unit) {
             }
         }
 
-        // 6 — Repo löschen
-        Section("6 🗑 Repo löschen") {
+        // 10 — Repo löschen
+        Section("10 🗑 Repo löschen") {
             Text("Löscht das in Maske 2 gewählte Repo endgültig. Zur Sicherheit musst du den Namen eintippen.", color = SOFT, fontSize = 13.sp)
             Text("Braucht einen Token mit Recht „delete_repo“:", color = SOFT, fontSize = 13.sp)
             OutlinedButton(onClick = { open(ctx, TOKEN_URL_DELETE) }, modifier = Modifier.fillMaxWidth()) { Text("🔑 Token mit Lösch-Recht erstellen", color = BLUE) }
