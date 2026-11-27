@@ -56,7 +56,7 @@ fun testMsg(project: String, links: List<Link>): String {
     if (files.any { it.url.endsWith(".exe") }) sb.append("💻 Windows: Datei laden → Doppelklick → bei der blauen Warnung „Weitere Informationen“ → „Trotzdem ausführen“.\n")
     links.firstOrNull { it.name.contains("Infoseite") }?.let { sb.append("ℹ️ Infos & Anleitung: ").append(it.url).append("\n") }
     sb.append("\nUpdates kommen automatisch. Danke für deine Rückmeldung! 🙏")
-    return sb.toString()
+    return tr(sb.toString())
 }
 
 // ======================= GitHub (ohne Anmeldung, nur öffentliche Repos) =======================
@@ -171,7 +171,7 @@ object Store {
 
 // ======================= Aktionen =======================
 
-fun toast(c: Context, m: String) = Toast.makeText(c, m, Toast.LENGTH_SHORT).show()
+fun toast(c: Context, m: String) = Toast.makeText(c, tr(m), Toast.LENGTH_SHORT).show()
 
 fun copy(c: Context, text: String) {
     c.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Link", text))
@@ -179,7 +179,7 @@ fun copy(c: Context, text: String) {
 }
 
 fun share(c: Context, text: String) =
-    c.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Link senden"))
+    c.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), tr("Link senden")))
 
 fun open(c: Context, url: String) = try {
     c.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
@@ -195,12 +195,29 @@ fun versionCode(c: Context): Long = try {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Guard.starting(this)) { startActivity(Intent(this, RescueActivity::class.java)); finish(); return }
+        handle(intent)
+        if (Build.VERSION.SDK_INT >= 33 && !Notify.allowed(this))
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 7)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFF8FD3FF), secondary = Color(0xFFFF5C8A), background = Color(0xFF0A2540), surface = Color(0xFF11325A))) {
                 Surface(Modifier.fillMaxSize(), color = Color(0xFF0A2540)) { Screen() }
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handle(intent) }
+
+    private fun handle(i: Intent?) {
+        i?.getStringExtra("reviews")?.let { Nav.reviews = it }
+        if (i?.getBooleanExtra("pick", false) == true) Nav.pick = true
+    }
+}
+
+/** Sprung aus Benachrichtigung/Widget */
+object Nav {
+    var reviews by mutableStateOf<String?>(null)
+    var pick by mutableStateOf(false)
 }
 
 private val GITHUB = listOf(
@@ -221,21 +238,25 @@ fun Screen() {
     var add by remember { mutableStateOf(false) }
     var tools by remember { mutableStateOf(false) }
     var reviews by remember { mutableStateOf<Pair<String, String>?>(null) }   // Projekt, Repo
-    var badges by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var infos by remember { mutableStateOf(Stats.load(ctx).associateBy { it.project }) }
     var pick by remember { mutableStateOf(false) }
+    var qrFor by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var feedback by remember { mutableStateOf(false) }
     if (Api.token.isBlank()) Api.token = toolSp(ctx).getString("token", "") ?: ""
-    fun repoOf(proj: String, ls: List<Link>): String? =
-        if (proj == "Link-Zentrale") "$USER/Link-Zentrale"
-        else ls.firstNotNullOfOrNull { Regex("github\\.com/([^/]+/[^/]+)/releases").find(it.url)?.groupValues?.get(1) }
     fun countBadges() {
         scope.launch {
-            val m = mutableMapOf<String, Int>()
-            (links).groupBy { it.project }.forEach { (p, ls) ->
-                val r = repoOf(p, ls) ?: return@forEach
-                m[r] = try { withContext(Dispatchers.IO) { Rv.unread(ctx, r) } } catch (_: Exception) { 0 }
-            }
-            badges = m
+            val l = withContext(Dispatchers.IO) { try { Stats.all(ctx) } catch (_: Exception) { null } }
+            if (l != null) { infos = l.associateBy { it.project }; LinkWidget.updateAll(ctx) }
         }
+    }
+    // Sprung aus Benachrichtigung / Widget
+    LaunchedEffect(Nav.reviews, Nav.pick, links) {
+        Nav.reviews?.let { p -> links.filter { it.project == p }.let(::repoOf)?.let { reviews = p to it; Nav.reviews = null } }
+        if (Nav.pick) { pick = true; Nav.pick = false }
+    }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(3000); Guard.ok(ctx)
+        withContext(Dispatchers.IO) { try { Guard.sendCrash(ctx) } catch (_: Exception) { } }
     }
     if (tools) { ToolsScreen { tools = false }; return }
     reviews?.let { (p, r) -> ReviewsScreen(p, r) { reviews = null; countBadges() }; return }
@@ -258,11 +279,13 @@ fun Screen() {
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Link-Zentrale", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
-                        val total = badges.values.sum()
+                        val total = infos.values.sumOf { it.unread }
                         if (total > 0) Badge(containerColor = Color(0xFFFF5C8A), modifier = Modifier.padding(start = 8.dp)) { Text("$total neu", color = Color.White) }
                     }
                     Text("Version 1.${versionCode(ctx)} • $status", color = Color(0xFFA9C3E0), fontSize = 13.sp)
                 }
+                TextButton(onClick = { L.set(ctx, !L.en) }, contentPadding = PaddingValues(4.dp)) { androidx.compose.material3.Text(if (L.en) "🇬🇧" else "🇩🇪", fontSize = 22.sp) }
+                TextButton(onClick = { feedback = true }, contentPadding = PaddingValues(4.dp)) { Text("⭐", fontSize = 22.sp) }
                 TextButton(onClick = { refresh() }) { Text("↻", fontSize = 26.sp, color = Color(0xFF8FD3FF)) }
             }
             update?.let { u ->
@@ -297,7 +320,7 @@ fun Screen() {
                     }
                 }
             }
-            val totalNew = badges.values.sum()
+            val totalNew = infos.values.sumOf { it.unread }
             Button(
                 onClick = { pick = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(bottom = 8.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = if (totalNew > 0) Color(0xFFFF5C8A) else Color(0xFF1B4A80), contentColor = Color.White)
@@ -318,15 +341,26 @@ fun Screen() {
             item(key = "h_$proj") {
                 Card(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 4.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF1B4A80))) {
                     Column(Modifier.padding(14.dp)) {
-                        val repoP = repoOf(proj, ls)
+                        val repoP = repoOf(ls)
+                        val inf = infos[proj]
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("📦 $proj", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                             if (repoP != null && proj != "Eigene Links") BadgedBox(badge = {
-                                val n = badges[repoP] ?: 0
+                                val n = inf?.unread ?: 0
                                 if (n > 0) Badge(containerColor = Color(0xFFFF5C8A)) { Text("$n", color = Color.White) }
                             }) {
                                 OutlinedButton(onClick = { reviews = proj to repoP }) { Text("💬 Bewertungen", color = Color.White) }
                             }
+                        }
+                        if (inf != null) {
+                            val parts = buildList {
+                                if (inf.build.isNotBlank()) add(inf.build + " Build")
+                                add("⬇ ${inf.downloads} Downloads")
+                                if (inf.ratings > 0) add("★ %.1f (${inf.ratings})".format(inf.avg))
+                                if (inf.bugs > 0) add("🐞 ${inf.bugs} offene Fehler")
+                            }
+                            Text(parts.joinToString("  •  "), color = Color.White, fontSize = 13.sp,
+                                modifier = Modifier.padding(top = 4.dp).clickable(enabled = inf.buildUrl.isNotBlank()) { open(ctx, inf.buildUrl) })
                         }
                         if (proj != "Eigene Links") {
                             Text("Test-Link zum Weitergeben – fertige Nachricht mit Anleitung", color = Color(0xFFA9C3E0), fontSize = 13.sp)
@@ -335,6 +369,10 @@ fun Screen() {
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366), contentColor = Color(0xFF06301A))) { Text("📤 An Tester senden", fontWeight = FontWeight.Bold) }
                                 Button(onClick = { copy(ctx, testMsg(proj, ls)) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8FD3FF), contentColor = Color(0xFF0A2540))) { Text("📋 Nachricht kopieren") }
+                            }
+                            val main = ls.firstOrNull { it.url.endsWith(".apk") } ?: ls.firstOrNull { !it.name.contains("Infoseite") }
+                            if (main != null) OutlinedButton(onClick = { qrFor = proj to main.url }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                                Text("🔳 QR-Code", color = Color.White)
                             }
                         }
                     }
@@ -349,7 +387,7 @@ fun Screen() {
     }
 
     if (pick) {
-        val projs = links.groupBy { it.project }.mapNotNull { (p, ls) -> repoOf(p, ls)?.let { p to it } }.distinctBy { it.second }
+        val projs = links.filter { it.project.isNotBlank() }.groupBy { it.project }.mapNotNull { (p, ls) -> repoOf(ls)?.let { p to it } }
         AlertDialog(
             onDismissRequest = { pick = false },
             title = { Text("💬 Bewertungen") },
@@ -357,7 +395,7 @@ fun Screen() {
                 Column {
                     if (projs.isEmpty()) Text("Noch keine Projekte geladen – oben ↻ antippen.")
                     projs.forEach { (p, r) ->
-                        val n = badges[r] ?: 0
+                        val n = infos[p]?.unread ?: 0
                         OutlinedButton(onClick = { pick = false; reviews = p to r }, modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
                             Text("📦 $p", modifier = Modifier.weight(1f))
                             if (n > 0) Badge(containerColor = Color(0xFFFF5C8A)) { Text("$n neu", color = Color.White) }
@@ -368,6 +406,9 @@ fun Screen() {
             confirmButton = { TextButton(onClick = { pick = false }) { Text("Schließen") } }
         )
     }
+
+    qrFor?.let { (p, u) -> QrDialog(p, u) { qrFor = null } }
+    if (feedback) FeedbackDialog { feedback = false }
 
     if (add) {
         var n by remember { mutableStateOf("") }

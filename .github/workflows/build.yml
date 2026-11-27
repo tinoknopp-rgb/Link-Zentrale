@@ -9,6 +9,7 @@ env:
   KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
   KEY_ALIAS: tino
   UT: ${{ secrets.UPDATE_TOKEN }}
+  FEEDBACK_TOKEN: ${{ secrets.FEEDBACK_TOKEN }}
 jobs:
   android:
     runs-on: ubuntu-latest

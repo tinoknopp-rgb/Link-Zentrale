@@ -30,11 +30,11 @@ object Rv {
                      val open: Boolean, val comments: Int, val url: String)
     data class Comment(val user: String, val body: String, val date: String)
 
-    fun list(repo: String): List<Issue> {
+    fun list(repo: String, project: String? = null): List<Issue> {
         val r = Api.call("GET", "/repos/$repo/issues?state=all&per_page=60&sort=created&direction=desc")
         if (r.code == 404) return emptyList()
         val a = JSONArray(Api.need(r, "Bewertungen laden").body)
-        return (0 until a.length()).map { a.getJSONObject(it) }.filter { !it.has("pull_request") }.map {
+        return (0 until a.length()).map { a.getJSONObject(it) }.filter { !it.has("pull_request") && belongs(project, it.optString("title")) }.map {
             Issue(it.getInt("number"), it.optString("title"), it.optString("body"), it.getJSONObject("user").optString("login"),
                 it.optString("created_at").take(10), it.optString("state") == "open", it.optInt("comments"), it.optString("html_url"))
         }
@@ -61,7 +61,7 @@ object Rv {
     private fun sp(c: Context) = c.getSharedPreferences("seen", Context.MODE_PRIVATE)
     fun isNew(c: Context, repo: String, i: Issue) = sp(c).getInt("$repo#${i.number}", -1) < i.comments
     fun markRead(c: Context, repo: String, i: Issue, comments: Int) = sp(c).edit().putInt("$repo#${i.number}", comments).apply()
-    fun unread(c: Context, repo: String) = list(repo).count { isNew(c, repo, it) }
+    fun unread(c: Context, repo: String, project: String? = null) = list(repo, project).count { isNew(c, repo, it) }
 }
 
 fun kind(title: String) = when {
@@ -89,7 +89,7 @@ fun ReviewsScreen(project: String, repo: String, onBack: () -> Unit) {
     fun load() = scope.launch {
         status = "Lade …"
         status = try {
-            val l = withContext(Dispatchers.IO) { Rv.list(repo) }
+            val l = withContext(Dispatchers.IO) { Rv.list(repo, project) }
             list = l
             val n = l.count { Rv.isNew(ctx, repo, it) }
             if (l.isEmpty()) "Noch keine Bewertungen" else "${l.size} Einträge • $n neu"
