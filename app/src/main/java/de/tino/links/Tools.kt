@@ -96,6 +96,9 @@ object Api {
 
     fun createFolder(r: Repo, path: String): String {
         val p = path.trim().trim('/')
+        // Gibt es den Ordner schon (Datei darin vorhanden)? Dann nichts überschreiben
+        val chk = call("GET", "/repos/${r.full}/contents/$p?ref=${r.branch}")
+        if (chk.code in 200..299) return "ℹ️ Ordner „$p“ gibt es in ${r.name} schon"
         need(call("PUT", "/repos/${r.full}/contents/$p/.gitkeep", JSONObject().put("message", "Ordner $p angelegt").put("content", "").put("branch", r.branch)), "Ordner anlegen")
         return "✅ Ordner „$p“ in ${r.name} angelegt"
     }
