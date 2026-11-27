@@ -20,6 +20,7 @@ object Acc {
     private fun sp(c: Context) = c.getSharedPreferences("links", Context.MODE_PRIVATE)
 
     fun init(c: Context) {
+        Promo.on = sp(c).getBoolean("promo", true)
         if (owner.isNotBlank()) return
         owner = sp(c).getString("owner", "") ?: ""
         if (owner.isBlank()) {
@@ -28,6 +29,8 @@ object Acc {
             if (!old.isNullOrBlank()) set(c, old)
         }
     }
+
+    fun setPromo(c: Context, on: Boolean) { Promo.on = on; sp(c).edit().putBoolean("promo", on).apply() }
 
     fun set(c: Context, name: String) {
         owner = name.trim().removePrefix("https://github.com/").trim('/')

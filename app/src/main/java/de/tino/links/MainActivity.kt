@@ -49,6 +49,10 @@ data class Link(val name: String, val url: String, val info: String = "", val ow
     val isMeta get() = url.startsWith("desc:") || url.startsWith("tester:")
 }
 
+/** Kleiner Hinweis unter Tester-Nachrichten (abschaltbar in 🛠 Werkzeuge) */
+object Promo { var on by mutableStateOf(true) }
+fun promoLine(appRepo: String) = "Gesendet mit Link-Zentrale: https://github.com/$appRepo"
+
 /** Projektname aus dem Dateinamen: „HandyPutz-1.4.apk“ → „HandyPutz“ */
 fun projectOf(file: String) = file.substringBeforeLast('.').replace(Regex("[-_ ]?v?\\d+(\\.\\d+)*$"), "")
 
@@ -62,6 +66,7 @@ fun testMsg(project: String, links: List<Link>): String {
     links.firstOrNull { it.name.contains("Infoseite") }?.let { sb.append("ℹ️ Infos & Anleitung: ").append(it.url).append("\n") }
     links.firstOrNull { it.url.startsWith("tester:") }?.let { sb.append("\n").append(it.name).append("\n") }
     sb.append("\nUpdates kommen automatisch. Danke für deine Rückmeldung! 🙏")
+    if (Promo.on && UPDATE_REPO.isNotBlank()) sb.append("\n\n— ").append(promoLine(UPDATE_REPO))
     return tr(sb.toString())
 }
 

@@ -206,6 +206,22 @@ object Api {
         return "⭐ ${rel.name} ist jetzt die neueste Version"
     }
 
+    // ---------- Einstellungen: Sichtbarkeit, Beschreibung, Themen ----------
+    data class Meta(val private: Boolean, val description: String, val topics: List<String>, val homepage: String)
+
+    fun meta(r: Repo): Meta {
+        val o = JSONObject(need(call("GET", "/repos/${r.full}"), "Einstellungen lesen").body)
+        val t = o.optJSONArray("topics") ?: JSONArray()
+        return Meta(o.optBoolean("private"), o.optString("description").let { if (it == "null") "" else it },
+            (0 until t.length()).map { t.getString(it) }, o.optString("homepage").let { if (it == "null") "" else it })
+    }
+
+    fun saveMeta(r: Repo, private: Boolean, description: String, topics: List<String>, homepage: String): String {
+        need(call("PATCH", "/repos/${r.full}", JSONObject().put("private", private).put("description", description).put("homepage", homepage)), "Einstellungen speichern")
+        need(call("PUT", "/repos/${r.full}/topics", JSONObject().put("names", JSONArray(topics))), "Themen speichern")
+        return "✅ ${r.name}: " + (if (private) "🔒 privat" else "🌍 öffentlich") + " • ${topics.size} Themen"
+    }
+
     fun deleteRelease(r: Repo, rel: Rel): String {
         need(call("DELETE", "/repos/${r.full}/releases/${rel.id}"), "Version löschen")
         call("DELETE", "/repos/${r.full}/git/refs/tags/${rel.tag}")
@@ -323,6 +339,10 @@ fun ToolsScreen(onBack: () -> Unit) {
             Text("Diese App zeigt die Projekte dieses GitHub-Kontos.", color = SOFT, fontSize = 13.sp)
             Field(acc, "GitHub-Konto (Name)") { acc = it.trim() }
             Btn("Konto übernehmen") { if (acc.isNotBlank()) { Acc.set(ctx, acc); status = "✅ Konto: $acc" } }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(Promo.on, { Acc.setPromo(ctx, it) })
+                Text("  „Gesendet mit Link-Zentrale“ unter Tester-Nachrichten", color = Color.White, fontSize = 13.sp)
+            }
         }
 
         // 2 — Repo wählen + alle Links
@@ -465,6 +485,35 @@ fun ToolsScreen(onBack: () -> Unit) {
             }
         }
 
+        // 10 — Einstellungen
+        Section("10 ⚙️ Repo-Einstellungen") {
+            var priv by remember(repo) { mutableStateOf(repo?.private ?: true) }
+            var desc by remember(repo) { mutableStateOf("") }
+            var topics by remember(repo) { mutableStateOf("") }
+            var home by remember(repo) { mutableStateOf("") }
+            Text("Repo: ${repo?.name ?: "– erst in Maske 2 wählen –"}", color = SOFT, fontSize = 13.sp)
+            Btn("↻ Einstellungen laden") {
+                val r = repo; if (r != null) run("Einstellungen laden") {
+                    val m = Api.meta(r); scope.launch { priv = m.private; desc = m.description; topics = m.topics.joinToString(", "); home = m.homepage }; "✅ ${r.name}"
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(!priv, { priv = !it }); Text(if (priv) "  🔒 Privat" else "  🌍 Öffentlich", color = Color.White)
+            }
+            Field(desc, "Beschreibung") { desc = it }
+            Field(topics, "Themen, mit Komma (z. B. android, github)") { topics = it }
+            Field(home, "Webseite (optional)") { home = it.trim() }
+            Text("Öffentlich = jeder kann den Code sehen. Vorher sicherstellen, dass keine Passwörter im Repo liegen.", color = SOFT, fontSize = 12.sp)
+            Btn("💾 Einstellungen speichern", PINK) {
+                val r = repo
+                if (r != null) {
+                    val t = topics.split(',').map { it.trim().lowercase().replace(' ', '-') }.filter { it.isNotBlank() }
+                    val go = { run("Speichern", { loadRepos() }) { Api.saveMeta(r, priv, desc.trim(), t, home) } }
+                    if (r.private && !priv) confirm = Triple("${r.name} öffentlich machen?", "", go) else go()
+                }
+            }
+        }
+
         // 6 — Repo löschen
         Section("6 🗑 Repo löschen") {
             Text("Löscht das in Maske 2 gewählte Repo endgültig. Zur Sicherheit musst du den Namen eintippen.", color = SOFT, fontSize = 13.sp)
@@ -484,7 +533,7 @@ fun ToolsScreen(onBack: () -> Unit) {
             onDismissRequest = { confirm = null },
             title = { Text(title) },
             text = { if (must.isNotEmpty()) Field(typed, "Zum Bestätigen „$must“ eintippen") { typed = it } else Text("Das kann nicht rückgängig gemacht werden.") },
-            confirmButton = { TextButton(enabled = must.isEmpty() || typed.trim() == must, onClick = { confirm = null; action() }) { Text("Löschen", color = PINK) } },
+            confirmButton = { TextButton(enabled = must.isEmpty() || typed.trim() == must, onClick = { confirm = null; action() }) { Text(if (title.contains("öffentlich")) "Ja, öffentlich" else "Löschen", color = PINK) } },
             dismissButton = { TextButton(onClick = { confirm = null }) { Text("Abbrechen") } }
         )
     }

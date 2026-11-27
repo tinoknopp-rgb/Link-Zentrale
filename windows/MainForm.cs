@@ -406,6 +406,9 @@ public class MainForm : Form
             if (tbOwner.Text.Trim() == "") return;
             Store.Owner = tbOwner.Text.Trim(); SetStatus("✅ Konto: " + Store.Owner); await RefreshAll();
         }));
+        var chkPromo = new CheckBox { Text = Tr.T("„Gesendet mit Link-Zentrale“ unter Tester-Nachrichten"), Checked = Store.Promo, AutoSize = true, ForeColor = Color.White, Margin = new Padding(3, 6, 3, 6) };
+        chkPromo.CheckedChanged += (_, _) => Store.Promo = chkPromo.Checked;
+        cA.Controls.Add(chkPromo);
         s.Controls.Add(cA);
 
         // 2 — Repo & Links
@@ -524,6 +527,32 @@ public class MainForm : Form
         c7.Controls.Add(Wide("↻ Versionen laden", async () => await LoadRels()));
         c7.Controls.Add(relsPanel);
         s.Controls.Add(c7);
+
+        // 10 — Repo-Einstellungen
+        var c10 = Card("10 ⚙️ Repo-Einstellungen");
+        c10.Controls.Add(Target());
+        var chkPub = new CheckBox { Text = "🌍 Öffentlich", AutoSize = true, ForeColor = Color.White, Margin = new Padding(3, 6, 3, 6) };
+        var tbMDesc = Txt("Beschreibung"); var tbTopics = Txt("Themen, mit Komma (z. B. android, github)"); var tbHome = Txt("Webseite (optional)");
+        c10.Controls.Add(Wide("↻ Einstellungen laden", async () =>
+        {
+            if (repo == null) return; var r = repo;
+            await Run("Einstellungen laden", async () =>
+            {
+                var m = await Gh.GetMeta(r);
+                chkPub.Checked = !m.Private; tbMDesc.Text = m.Description; tbTopics.Text = string.Join(", ", m.Topics); tbHome.Text = m.Homepage;
+                return "✅ " + r.Name;
+            });
+        }));
+        c10.Controls.AddRange(new Control[] { chkPub, tbMDesc, tbTopics, tbHome });
+        c10.Controls.Add(Lbl("Öffentlich = jeder kann den Code sehen. Vorher sicherstellen, dass keine Passwörter im Repo liegen.", 9, false, SOFT));
+        c10.Controls.Add(Wide("💾 Einstellungen speichern", async () =>
+        {
+            if (repo == null) return; var r = repo;
+            if (r.Private && chkPub.Checked && !Ask($"{r.Name} öffentlich machen?")) return;
+            await Run("Speichern", () => Gh.SaveMeta(r, !chkPub.Checked, tbMDesc.Text.Trim(), Logic.Topics(tbTopics.Text), tbHome.Text.Trim()));
+            await LoadRepos();
+        }, PINK));
+        s.Controls.Add(c10);
 
         // 8 — Repo löschen
         var c8 = Card("8 🗑 Repo löschen");

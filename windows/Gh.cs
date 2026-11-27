@@ -46,6 +46,13 @@ public static class Store
         }
     }
 
+    /// <summary>„Gesendet mit Link-Zentrale“ unter Tester-Nachrichten (abschaltbar)</summary>
+    public static bool Promo
+    {
+        get => !File.Exists(F("promo_off"));
+        set { Directory.CreateDirectory(Dir); if (value) { try { File.Delete(F("promo_off")); } catch { } } else File.WriteAllText(F("promo_off"), "1"); }
+    }
+
     /// <summary>Gewähltes GitHub-Konto</summary>
     public static string Owner
     {
@@ -185,6 +192,7 @@ public static class Gh
         var tt = links.FirstOrDefault(l => l.Url.StartsWith("tester:"));
         if (tt != null) sb.Append("\r\n").Append(tt.Name).Append("\r\n");
         sb.Append("\r\nUpdates kommen automatisch. Danke für deine Rückmeldung! 🙏");
+        if (Store.Promo && UPDATE_REPO != "") sb.Append("\r\n\r\n— ").Append(Logic.PromoLine(UPDATE_REPO));
         return Tr.T(sb.ToString());
     }
 
@@ -381,6 +389,24 @@ public static class Gh
     {
         Need(await Call("PATCH", $"/repos/{r.Full}/releases/{v.Id}", new JsonObject { ["make_latest"] = "true" }), "Als neueste markieren");
         return $"⭐ {v.Name} ist jetzt die neueste Version";
+    }
+
+    // ---------------- Repo-Einstellungen ----------------
+    public record Meta(bool Private, string Description, List<string> Topics, string Homepage);
+
+    public static async Task<Meta> GetMeta(Repo r)
+    {
+        var o = J(Need(await Call("GET", $"/repos/{r.Full}"), "Einstellungen lesen"));
+        return new Meta(o["private"]!.GetValue<bool>(), o["description"]?.ToString() ?? "",
+            o["topics"]?.AsArray().Select(t => t!.ToString()).ToList() ?? new(), o["homepage"]?.ToString() ?? "");
+    }
+
+    public static async Task<string> SaveMeta(Repo r, bool priv, string desc, List<string> topics, string home)
+    {
+        Need(await Call("PATCH", $"/repos/{r.Full}", new JsonObject { ["private"] = priv, ["description"] = desc, ["homepage"] = home }), "Einstellungen speichern");
+        var arr = new JsonArray(); foreach (var t in topics) arr.Add(t);
+        Need(await Call("PUT", $"/repos/{r.Full}/topics", new JsonObject { ["names"] = arr }), "Themen speichern");
+        return $"✅ {r.Name}: " + (priv ? "🔒 privat" : "🌍 öffentlich") + $" • {topics.Count} Themen";
     }
 
     public static async Task<string> DeleteRelease(Repo r, Rel v)

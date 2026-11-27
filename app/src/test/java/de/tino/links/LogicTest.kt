@@ -38,3 +38,8 @@ class LogicTest {
         assertEquals("max/Link-Zentrale", srcRepo("Link-Zentrale", "max/Link-Zentrale-Updates"))
     }
 }
+
+class PromoTest {
+    @Test fun hinweisZeile() =
+        assertEquals("Gesendet mit Link-Zentrale: https://github.com/max/Link-Zentrale-Updates", promoLine("max/Link-Zentrale-Updates"))
+}

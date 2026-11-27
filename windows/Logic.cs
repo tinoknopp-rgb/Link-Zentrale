@@ -22,6 +22,13 @@ public static class Logic
     /// <summary>„max/WunschFinder-Updates“ → „max/WunschFinder“ (dort laufen die Builds)</summary>
     public static string SrcRepo(string repo) => repo.EndsWith("-Updates") ? repo[..^8] : repo;
 
+    /// <summary>Kleiner Hinweis unter Tester-Nachrichten</summary>
+    public static string PromoLine(string appRepo) => $"Gesendet mit Link-Zentrale: https://github.com/{appRepo}";
+
+    /// <summary>„android, GitHub Tools“ → ["android", "github-tools"]</summary>
+    public static List<string> Topics(string s) =>
+        s.Split(',').Select(t => t.Trim().ToLowerInvariant().Replace(' ', '-')).Where(t => t != "").Distinct().ToList();
+
     /// <summary>Versionsnummer aus Tag „v1.21“ / „link-v1.21“ → 21</summary>
     public static int? TagCode(string tag) { var m = Regex.Match(tag, @"(\d+)$"); return m.Success ? int.Parse(m.Groups[1].Value) : null; }
 }

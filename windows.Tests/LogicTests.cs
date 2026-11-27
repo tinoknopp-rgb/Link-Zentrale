@@ -33,3 +33,9 @@ public class LogicTests
     [Fact] public void QuellRepo() => Assert.Equal("max/WunschFinder", Logic.SrcRepo("max/WunschFinder-Updates"));
     [Fact] public void Versionsnummer() { Assert.Equal(21, Logic.TagCode("v1.21")); Assert.Equal(20, Logic.TagCode("link-v1.20")); Assert.Null(Logic.TagCode("link-zentrale")); }
 }
+
+public class MoreTests
+{
+    [Fact] public void Hinweis() => Assert.Equal("Gesendet mit Link-Zentrale: https://github.com/max/Link-Zentrale-Updates", Logic.PromoLine("max/Link-Zentrale-Updates"));
+    [Fact] public void Themen() => Assert.Equal(new[] { "android", "github-tools" }, Logic.Topics("Android, GitHub Tools, android,"));
+}
