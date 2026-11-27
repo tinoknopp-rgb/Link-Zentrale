@@ -206,19 +206,33 @@ public class MainForm : Form
     {
         linksPanel.SuspendLayout();
         linksPanel.Controls.Clear();
-        foreach (var l in links.Concat(own))
+        foreach (var g in links.Concat(own).GroupBy(l => l.Own ? "Eigene Links" : (l.Project == "" ? "Sonstiges" : l.Project)))
         {
-            var c = Card("");
-            c.Controls.Add(Lbl(l.Name, 12, true));
-            if (l.Info != "") c.Controls.Add(Lbl(l.Info, 9, false, SOFT));
-            c.Controls.Add(Lbl(l.Url, 9, false, SOFT));
-            var row = Row(
-                Btn("📋 Kopieren", () => Copy(l.Url)),
-                Btn("📧 Senden", () => Mail(Strip(l.Name), Strip(l.Name) + ": " + l.Url), GREEN),
-                Btn("↗ Öffnen", () => Open(l.Url), SOFT));
-            if (l.Own) row.Controls.Add(Btn("🗑", () => { own.Remove(l); Store.Save("own.json", own); RenderLinks(); }, PINK));
-            c.Controls.Add(row);
-            linksPanel.Controls.Add(c);
+            var proj = g.Key; var ls = g.ToList();
+            var h = Card("📦 " + proj);
+            h.BackColor = Color.FromArgb(27, 74, 128); h.Margin = new Padding(0, 16, 0, 4);
+            if (proj != "Eigene Links")
+            {
+                h.Controls.Add(Lbl("Test-Link zum Weitergeben – fertige Nachricht mit Anleitung", 9, false, SOFT));
+                h.Controls.Add(Row(
+                    Btn("📋 Test-Nachricht kopieren", () => Copy(Gh.TestMsg(proj, ls))),
+                    Btn("📧 Per E-Mail an Tester", () => Mail($"Bitte teste: {proj}", Gh.TestMsg(proj, ls)), GREEN)));
+            }
+            linksPanel.Controls.Add(h);
+            foreach (var l in ls)
+            {
+                var c = Card("");
+                c.Controls.Add(Lbl(l.Name, 12, true));
+                if (l.Info != "") c.Controls.Add(Lbl(l.Info, 9, false, SOFT));
+                c.Controls.Add(Lbl(l.Url, 9, false, SOFT));
+                var row = Row(
+                    Btn("📋 Kopieren", () => Copy(l.Url)),
+                    Btn("📧 Senden", () => Mail(Strip(l.Name), Strip(l.Name) + ": " + l.Url), GREEN),
+                    Btn("↗ Öffnen", () => Open(l.Url), SOFT));
+                if (l.Own) row.Controls.Add(Btn("🗑", () => { own.Remove(l); Store.Save("own.json", own); RenderLinks(); }, PINK));
+                c.Controls.Add(row);
+                linksPanel.Controls.Add(c);
+            }
         }
         linksPanel.ResumeLayout();
     }

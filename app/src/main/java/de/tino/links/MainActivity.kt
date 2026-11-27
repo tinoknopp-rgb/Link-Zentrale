@@ -42,7 +42,22 @@ const val USER = "tinoknopp-rgb"
 // Updates der Link-Zentrale liegen im öffentlichen Update-Repo mit Kennzeichen „link-v…“
 const val UPDATE_REPO = "$USER/HandyPutz-Updates"
 
-data class Link(val name: String, val url: String, val info: String = "", val own: Boolean = false)
+data class Link(val name: String, val url: String, val info: String = "", val own: Boolean = false, val project: String = "")
+
+/** Projektname aus dem Dateinamen: „HandyPutz-1.4.apk“ → „HandyPutz“ */
+fun projectOf(file: String) = file.substringBeforeLast('.').replace(Regex("[-_ ]?v?\\d+(\\.\\d+)*$"), "")
+
+/** Fertige Nachricht für Testpersonen */
+fun testMsg(project: String, links: List<Link>): String {
+    val files = links.filter { !it.name.contains("Infoseite") }
+    val sb = StringBuilder("🧪 Hallo! Bitte teste meine App „$project“.\n\n")
+    files.forEach { sb.append(it.name.substringAfter(' ')).append(":\n").append(it.url).append("\n\n") }
+    if (files.any { it.url.endsWith(".apk") }) sb.append("📱 Android: Link öffnen → Datei laden → öffnen → installieren (falls gefragt: „Unbekannte Apps installieren“ erlauben).\n")
+    if (files.any { it.url.endsWith(".exe") }) sb.append("💻 Windows: Datei laden → Doppelklick → bei der blauen Warnung „Weitere Informationen“ → „Trotzdem ausführen“.\n")
+    links.firstOrNull { it.name.contains("Infoseite") }?.let { sb.append("ℹ️ Infos & Anleitung: ").append(it.url).append("\n") }
+    sb.append("\nUpdates kommen automatisch. Danke für deine Rückmeldung! 🙏")
+    return sb.toString()
+}
 
 // ======================= GitHub (ohne Anmeldung, nur öffentliche Repos) =======================
 
@@ -81,10 +96,24 @@ object Gh {
                 val label = name.substringBeforeLast('.')
                 out += Link(
                     "${icon(name)} $label", "https://github.com/$full/releases/latest/download/$name",
-                    "${rel.optString("name", rel.optString("tag_name"))} • ${size(a.optLong("size"))}"
+                    "${rel.optString("name", rel.optString("tag_name"))} • ${size(a.optLong("size"))}", project = projectOf(name)
                 )
             }
-            if (assets.length() > 0) out += Link("📄 ${r.getString("name")} – Infoseite", r.getString("html_url"), "Anleitung & alle Versionen")
+            if (assets.length() > 0) {
+                val rn = r.getString("name")
+                val proj = out.map { it.project }.distinct().firstOrNull { rn.startsWith(it) } ?: rn
+                out += Link("📄 $rn – Infoseite", r.getString("html_url"), "Anleitung & alle Versionen", project = proj)
+            }
+        }
+        // Link-Zentrale selbst (fester Link, zeigt immer auf die neueste Version)
+        val (lc, lt) = get("https://api.github.com/repos/$UPDATE_REPO/releases/tags/link-zentrale")
+        if (lc in 200..299) {
+            val a = JSONObject(lt).optJSONArray("assets") ?: JSONArray()
+            for (k in 0 until a.length()) {
+                val n = a.getJSONObject(k).getString("name")
+                out += Link("${icon(n)} $n", "https://github.com/$UPDATE_REPO/releases/download/link-zentrale/$n",
+                    (if (n.endsWith(".exe")) "Windows" else "Android") + " • ${size(a.getJSONObject(k).optLong("size"))}", project = "Link-Zentrale")
+            }
         }
         return out
     }
@@ -128,9 +157,9 @@ object Gh {
 
 object Store {
     private fun sp(c: Context) = c.getSharedPreferences("links", Context.MODE_PRIVATE)
-    private fun toJson(l: List<Link>) = JSONArray().apply { l.forEach { put(JSONObject().put("n", it.name).put("u", it.url).put("i", it.info)) } }.toString()
+    private fun toJson(l: List<Link>) = JSONArray().apply { l.forEach { put(JSONObject().put("n", it.name).put("u", it.url).put("i", it.info).put("p", it.project)) } }.toString()
     private fun fromJson(s: String, own: Boolean) = try {
-        val a = JSONArray(s); (0 until a.length()).map { val o = a.getJSONObject(it); Link(o.getString("n"), o.getString("u"), o.optString("i"), own) }
+        val a = JSONArray(s); (0 until a.length()).map { val o = a.getJSONObject(it); Link(o.getString("n"), o.getString("u"), o.optString("i"), own, o.optString("p")) }
     } catch (_: Exception) { emptyList() }
 
     fun cache(c: Context) = fromJson(sp(c).getString("cache", "[]") ?: "[]", false)
@@ -256,7 +285,26 @@ fun Screen() {
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5C8A), contentColor = Color.White)
             ) { Text("📋 Alle Links auf einmal kopieren", fontWeight = FontWeight.Bold) }
         }
-        items(links + own, key = { it.url + it.own }) { l -> LinkCard(l) { own = own - l; Store.setOwn(ctx, own) } }
+        val groups = (links + own).groupBy { if (it.own) "Eigene Links" else it.project.ifBlank { "Sonstiges" } }
+        groups.forEach { (proj, ls) ->
+            item(key = "h_$proj") {
+                Card(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 4.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF1B4A80))) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text("📦 $proj", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        if (proj != "Eigene Links") {
+                            Text("Test-Link zum Weitergeben – fertige Nachricht mit Anleitung", color = Color(0xFFA9C3E0), fontSize = 13.sp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                                Button(onClick = { share(ctx, testMsg(proj, ls)) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366), contentColor = Color(0xFF06301A))) { Text("📤 An Tester senden", fontWeight = FontWeight.Bold) }
+                                Button(onClick = { copy(ctx, testMsg(proj, ls)) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8FD3FF), contentColor = Color(0xFF0A2540))) { Text("📋 Nachricht kopieren") }
+                            }
+                        }
+                    }
+                }
+            }
+            items(ls, key = { it.url + it.own }) { l -> LinkCard(l) { own = own - l; Store.setOwn(ctx, own) } }
+        }
         item {
             OutlinedButton(onClick = { add = true }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("➕ Eigenen Link hinzufügen", color = Color(0xFF8FD3FF)) }
             Text("Neue Apps in öffentlichen Repos mit Release erscheinen hier automatisch.", color = Color(0xFFA9C3E0), fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))

@@ -77,3 +77,20 @@ jobs:
             Link-Zentrale.apk
             Link-Zentrale.exe
           make_latest: false
+      - name: Fester Test-Link (immer neueste Version)
+        if: env.KS != '' && env.UT != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: tinoknopp-rgb/HandyPutz-Updates
+          token: ${{ secrets.UPDATE_TOKEN }}
+          tag_name: link-zentrale
+          name: Link-Zentrale (immer aktuell)
+          body: |
+            Fester Link zur jeweils neuesten Link-Zentrale (zum Weitergeben an Testpersonen)
+            📱 Android: https://github.com/tinoknopp-rgb/HandyPutz-Updates/releases/download/link-zentrale/Link-Zentrale.apk
+            💻 Windows: https://github.com/tinoknopp-rgb/HandyPutz-Updates/releases/download/link-zentrale/Link-Zentrale.exe
+          files: |
+            Link-Zentrale.apk
+            Link-Zentrale.exe
+          overwrite_files: true
+          make_latest: false
