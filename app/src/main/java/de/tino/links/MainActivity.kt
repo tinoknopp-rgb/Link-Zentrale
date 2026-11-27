@@ -189,6 +189,8 @@ fun Screen() {
     var status by remember { mutableStateOf("Aktualisiere …") }
     var update by remember { mutableStateOf<Gh.Update?>(null) }
     var add by remember { mutableStateOf(false) }
+    var tools by remember { mutableStateOf(false) }
+    if (tools) { ToolsScreen { tools = false }; return }
 
     fun refresh() {
         scope.launch {
@@ -243,6 +245,10 @@ fun Screen() {
                     }
                 }
             }
+            Button(
+                onClick = { tools = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8FD3FF), contentColor = Color(0xFF0A2540))
+            ) { Text("🛠 Werkzeuge: Token • Repos • Ordner • Secrets", fontWeight = FontWeight.Bold) }
             Text("Download-Links", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
             Button(
                 onClick = { copy(ctx, (links + own).joinToString("\n\n") { it.name.substringAfter(' ') + ":\n" + it.url }) },
