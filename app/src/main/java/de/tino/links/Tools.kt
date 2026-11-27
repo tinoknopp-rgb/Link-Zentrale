@@ -40,7 +40,7 @@ object Api {
     class R(val code: Int, val body: String, val scopes: String)
     data class Repo(val full: String, val name: String, val private: Boolean, val branch: String, val html: String)
 
-    private fun call(method: String, path: String, body: Any? = null): R {
+    fun call(method: String, path: String, body: Any? = null): R {
         val rb = body?.toString()?.toRequestBody("application/json".toMediaType())
             ?: if (method in listOf("POST", "PUT", "PATCH")) "".toRequestBody() else null
         val req = Request.Builder().url("https://api.github.com$path").method(method, rb)
@@ -52,7 +52,7 @@ object Api {
         http.newCall(req).execute().use { return R(it.code, it.body?.string() ?: "", it.header("X-OAuth-Scopes") ?: "") }
     }
 
-    private fun need(r: R, what: String): R {
+    fun need(r: R, what: String): R {
         if (r.code in 200..299) return r
         val m = try { JSONObject(r.body).optString("message") } catch (_: Exception) { r.body.take(120) }
         throw Exception("$what fehlgeschlagen (${r.code}): $m" + when (r.code) {
@@ -189,6 +189,7 @@ object Api {
     }
 }
 
+fun toolSp(c: Context) = c.getSharedPreferences("tools", Context.MODE_PRIVATE)
 private fun sp(c: Context) = c.getSharedPreferences("tools", Context.MODE_PRIVATE)
 const val TOKEN_URL = "https://github.com/settings/tokens/new?description=Link-Zentrale&scopes=repo,workflow,delete_repo"
 

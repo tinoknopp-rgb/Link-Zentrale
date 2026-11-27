@@ -14,9 +14,9 @@ static class Program
 
 public class MainForm : Form
 {
-    static readonly Color BG = Color.FromArgb(10, 37, 64), CARD = Color.FromArgb(17, 50, 90), INPUT = Color.FromArgb(8, 28, 50),
+    internal static readonly Color BG = Color.FromArgb(10, 37, 64), CARD = Color.FromArgb(17, 50, 90), INPUT = Color.FromArgb(8, 28, 50),
         SOFT = Color.FromArgb(169, 195, 224), BLUE = Color.FromArgb(143, 211, 255), PINK = Color.FromArgb(255, 92, 138), GREEN = Color.FromArgb(37, 211, 102);
-    const int W = 700;
+    internal const int W = 700;
 
     readonly Label status = new();
     readonly Button btnUpdate;
@@ -29,6 +29,25 @@ public class MainForm : Form
     Repo? repo;
     List<string> assets = new();
     AppUpdate? update;
+    Dictionary<string, int> badges = new();
+
+    static string? RepoOf(string proj, List<Link> ls) =>
+        proj == "Link-Zentrale" ? Gh.USER + "/Link-Zentrale"
+        : ls.Select(l => System.Text.RegularExpressions.Regex.Match(l.Url, @"github\.com/([^/]+/[^/]+)/releases")).FirstOrDefault(m => m.Success)?.Groups[1].Value;
+
+    async Task CountBadges()
+    {
+        var m = new Dictionary<string, int>();
+        foreach (var g in links.GroupBy(l => l.Project))
+        {
+            var r = RepoOf(g.Key, g.ToList()); if (r == null || m.ContainsKey(r)) continue;
+            try { m[r] = (await Gh.Issues(r)).Count(i => Seen.IsNew(r, i)); } catch { m[r] = 0; }
+        }
+        badges = m;
+        var total = m.Values.Sum();
+        Text = $"Link-Zentrale 1.{Gh.CurrentCode}" + (total > 0 ? $"  •  💬 {total} neu" : "");
+        RenderLinks();
+    }
 
     public MainForm()
     {
@@ -72,22 +91,22 @@ public class MainForm : Form
 
     // ======================= Bausteine =======================
 
-    static FlowLayoutPanel Stack() => new() { FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, Margin = new Padding(0), BackColor = Color.Transparent };
+    internal static FlowLayoutPanel Stack() => new() { FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, Margin = new Padding(0), BackColor = Color.Transparent };
 
-    static FlowLayoutPanel Page(params Control[] cs)
+    internal static FlowLayoutPanel Page(params Control[] cs)
     {
         var p = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, Padding = new Padding(14), BackColor = BG };
         p.Controls.AddRange(cs);
         return p;
     }
 
-    static Label Lbl(string t, float size = 10, bool bold = false, Color? c = null) => new()
+    internal static Label Lbl(string t, float size = 10, bool bold = false, Color? c = null) => new()
     {
         Text = t, AutoSize = true, MaximumSize = new Size(W - 30, 0), ForeColor = c ?? Color.White, BackColor = Color.Transparent,
         Font = new Font("Segoe UI", size, bold ? FontStyle.Bold : FontStyle.Regular), Margin = new Padding(3, 4, 3, 2)
     };
 
-    static Button Btn(string t, Action a, Color? c = null, int w = 0)
+    internal static Button Btn(string t, Action a, Color? c = null, int w = 0)
     {
         var b = new Button
         {
@@ -100,16 +119,16 @@ public class MainForm : Form
         return b;
     }
 
-    static Button Wide(string t, Action a, Color? c = null) => Btn(t, a, c, W - 30);
+    internal static Button Wide(string t, Action a, Color? c = null) => Btn(t, a, c, W - 30);
 
-    static FlowLayoutPanel Row(params Control[] cs)
+    internal static FlowLayoutPanel Row(params Control[] cs)
     {
         var p = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, WrapContents = true, AutoSize = true, MaximumSize = new Size(W - 20, 0), Margin = new Padding(0), BackColor = Color.Transparent };
         p.Controls.AddRange(cs);
         return p;
     }
 
-    static TextBox Txt(string ph, bool pw = false) => new()
+    internal static TextBox Txt(string ph, bool pw = false) => new()
     {
         PlaceholderText = ph, UseSystemPasswordChar = pw, Width = W - 30, BackColor = INPUT, ForeColor = Color.White,
         BorderStyle = BorderStyle.FixedSingle, Font = new Font("Segoe UI", 11), Margin = new Padding(3)
@@ -121,7 +140,7 @@ public class MainForm : Form
         FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 11), Margin = new Padding(3)
     };
 
-    static FlowLayoutPanel Card(string title)
+    internal static FlowLayoutPanel Card(string title)
     {
         var c = new FlowLayoutPanel
         {
@@ -132,7 +151,7 @@ public class MainForm : Form
         return c;
     }
 
-    static void Open(string url)
+    internal static void Open(string url)
     {
         try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
     }
@@ -142,7 +161,7 @@ public class MainForm : Form
         try { Clipboard.SetText(text); SetStatus("✅ Kopiert – jetzt einfügen und senden"); } catch { SetStatus("❌ Zwischenablage belegt – nochmal versuchen", true); }
     }
 
-    static void Mail(string subject, string body) =>
+    internal static void Mail(string subject, string body) =>
         Open($"mailto:?subject={Uri.EscapeDataString(subject)}&body={Uri.EscapeDataString(body)}");
 
     void SetStatus(string s, bool err = false) { status.Text = s; status.ForeColor = err || s.StartsWith("❌") ? PINK : SOFT; }
@@ -172,7 +191,7 @@ public class MainForm : Form
         return f.ShowDialog() == DialogResult.OK ? t.Text.Trim() : null;
     }
 
-    static bool Ask(string q) => MessageBox.Show(q, "Link-Zentrale", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
+    internal static bool Ask(string q) => MessageBox.Show(q, "Link-Zentrale", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
 
     // ======================= Reiter 1: Links =======================
 
@@ -213,6 +232,16 @@ public class MainForm : Form
             h.BackColor = Color.FromArgb(27, 74, 128); h.Margin = new Padding(0, 16, 0, 4);
             if (proj != "Eigene Links")
             {
+                var repoP = RepoOf(proj, ls);
+                if (repoP != null)
+                {
+                    var n = badges.GetValueOrDefault(repoP);
+                    h.Controls.Add(Btn(n > 0 ? $"💬 Bewertungen  ({n} neu)" : "💬 Bewertungen", () =>
+                    {
+                        using (var f = new ReviewsForm(proj, repoP)) f.ShowDialog(this);
+                        _ = CountBadges();
+                    }, n > 0 ? PINK : SOFT));
+                }
                 h.Controls.Add(Lbl("Test-Link zum Weitergeben – fertige Nachricht mit Anleitung", 9, false, SOFT));
                 h.Controls.Add(Row(
                     Btn("📋 Test-Nachricht kopieren", () => Copy(Gh.TestMsg(proj, ls))),
@@ -244,6 +273,7 @@ public class MainForm : Form
         {
             links = await Gh.Downloads(); Store.Save("cache.json", links); RenderLinks();
             SetStatus("✅ Aktuell");
+            await CountBadges();
         }
         catch { SetStatus("Offline – letzter Stand"); }
         try { update = await Gh.SelfUpdate(); } catch { update = null; }

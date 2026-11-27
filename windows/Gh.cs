@@ -16,6 +16,8 @@ public record Repo(string Full, string Name, bool Private, string Branch, string
 }
 public record RunInfo(long Id, string Title, string Status, string Url);
 public record Rel(long Id, string Tag, string Name, bool Latest, List<string> Files);
+public record Issue(int Number, string Title, string Body, string User, string Date, bool Open, int Comments, string Url);
+public record Comment(string User, string Body, string Date);
 public record AppUpdate(int Code, string Name, string Url);
 
 /// <summary>Einstellungen in %APPDATA%\Link-Zentrale (Token mit Windows-Schutz verschlüsselt)</summary>
@@ -69,7 +71,7 @@ public static class Gh
         using var req = new HttpRequestMessage(new HttpMethod(method), url);
         req.Headers.Accept.ParseAdd("application/vnd.github+json");
         req.Headers.Add("X-GitHub-Api-Version", "2022-11-28");
-        if (auth && Token != "") req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+        if (Token != "") req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);
         if (body != null) req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
         using var res = await http.SendAsync(req);
         var txt = await res.Content.ReadAsStringAsync();
@@ -326,5 +328,57 @@ public static class Gh
         Need(await Call("DELETE", $"/repos/{r.Full}/releases/{v.Id}"), "Version löschen");
         await Call("DELETE", $"/repos/{r.Full}/git/refs/tags/{v.Tag}");
         return $"🗑 {v.Name} gelöscht";
+    }
+    // ---------------- Bewertungen (Issues im Update-Repo) ----------------
+    public static async Task<List<Issue>> Issues(string repo)
+    {
+        var r = await Call("GET", $"/repos/{repo}/issues?state=all&per_page=60&sort=created&direction=desc");
+        if (r.Code == 404) return new();
+        return J(Need(r, "Bewertungen laden")).AsArray().Where(o => o!["pull_request"] == null).Select(o => new Issue(
+            o!["number"]!.GetValue<int>(), o["title"]?.ToString() ?? "", o["body"]?.ToString() ?? "", o["user"]?["login"]?.ToString() ?? "",
+            (o["created_at"]?.ToString() ?? "").PadRight(10)[..10], o["state"]?.ToString() == "open", o["comments"]!.GetValue<int>(), o["html_url"]!.ToString())).ToList();
+    }
+
+    public static async Task<List<Comment>> Comments(string repo, int n) =>
+        J(Need(await Call("GET", $"/repos/{repo}/issues/{n}/comments?per_page=100"), "Antworten laden")).AsArray().Select(o => new Comment(
+            o!["user"]?["login"]?.ToString() ?? "", o["body"]?.ToString() ?? "", (o["created_at"]?.ToString() ?? "").Replace('T', ' ').PadRight(16)[..16])).ToList();
+
+    public static async Task Reply(string repo, int n, string text)
+    {
+        if (Token == "") throw new Exception("Zum Antworten zuerst im Reiter 🛠 Werkzeuge den Token speichern");
+        Need(await Call("POST", $"/repos/{repo}/issues/{n}/comments", new JsonObject { ["body"] = text }), "Antwort senden");
+    }
+
+    public static async Task SetOpen(string repo, int n, bool open)
+    {
+        if (Token == "") throw new Exception("Dafür zuerst im Reiter 🛠 Werkzeuge den Token speichern");
+        Need(await Call("PATCH", $"/repos/{repo}/issues/{n}", new JsonObject { ["state"] = open ? "open" : "closed" }), "Status ändern");
+    }
+
+    public static string Kind(string t) =>
+        t.Contains("Bewertung", StringComparison.OrdinalIgnoreCase) || t.Contains('★') || t.Contains("⭐") ? "⭐" :
+        t.Contains("Vorschlag", StringComparison.OrdinalIgnoreCase) || t.Contains("💡") ? "💡" :
+        t.Contains("Fehler", StringComparison.OrdinalIgnoreCase) || t.Contains("Absturz", StringComparison.OrdinalIgnoreCase) || t.Contains("🐞") ? "🐞" : "💬";
+}
+
+/// <summary>Merkt sich pro Eintrag die gelesene Anzahl Antworten → „neu“-Zähler</summary>
+public static class Seen
+{
+    static readonly string F = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Link-Zentrale", "seen.json");
+    static Dictionary<string, int>? map;
+    static Dictionary<string, int> M
+    {
+        get
+        {
+            if (map != null) return map;
+            try { map = JsonSerializer.Deserialize<Dictionary<string, int>>(File.ReadAllText(F)); } catch { }
+            return map ??= new();
+        }
+    }
+    public static bool IsNew(string repo, Issue i) => !M.TryGetValue($"{repo}#{i.Number}", out var c) || c < i.Comments;
+    public static void Mark(string repo, Issue i, int comments)
+    {
+        M[$"{repo}#{i.Number}"] = comments;
+        try { Directory.CreateDirectory(Path.GetDirectoryName(F)!); File.WriteAllText(F, JsonSerializer.Serialize(M)); } catch { }
     }
 }

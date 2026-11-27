@@ -68,6 +68,7 @@ object Gh {
         c.instanceFollowRedirects = follow
         c.setRequestProperty("Accept", "application/vnd.github+json")
         c.setRequestProperty("User-Agent", "Link-Zentrale")
+        if (Api.token.isNotBlank()) c.setRequestProperty("Authorization", "Bearer ${Api.token}")
         return try {
             val code = c.responseCode
             code to ((if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() } ?: "")
@@ -219,14 +220,31 @@ fun Screen() {
     var update by remember { mutableStateOf<Gh.Update?>(null) }
     var add by remember { mutableStateOf(false) }
     var tools by remember { mutableStateOf(false) }
+    var reviews by remember { mutableStateOf<Pair<String, String>?>(null) }   // Projekt, Repo
+    var badges by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    if (Api.token.isBlank()) Api.token = toolSp(ctx).getString("token", "") ?: ""
+    fun repoOf(proj: String, ls: List<Link>): String? =
+        if (proj == "Link-Zentrale") "$USER/Link-Zentrale"
+        else ls.firstNotNullOfOrNull { Regex("github\\.com/([^/]+/[^/]+)/releases").find(it.url)?.groupValues?.get(1) }
+    fun countBadges() {
+        scope.launch {
+            val m = mutableMapOf<String, Int>()
+            (links).groupBy { it.project }.forEach { (p, ls) ->
+                val r = repoOf(p, ls) ?: return@forEach
+                m[r] = try { withContext(Dispatchers.IO) { Rv.unread(ctx, r) } } catch (_: Exception) { 0 }
+            }
+            badges = m
+        }
+    }
     if (tools) { ToolsScreen { tools = false }; return }
+    reviews?.let { (p, r) -> ReviewsScreen(p, r) { reviews = null; countBadges() }; return }
 
     fun refresh() {
         scope.launch {
             status = "Aktualisiere …"
             try {
                 val l = withContext(Dispatchers.IO) { Gh.downloads() }
-                links = l; Store.setCache(ctx, l); status = "✅ Aktuell"
+                links = l; Store.setCache(ctx, l); status = "✅ Aktuell"; countBadges()
             } catch (e: Exception) { status = "Offline – letzter Stand" }
             update = try { withContext(Dispatchers.IO) { Gh.selfUpdate(versionCode(ctx)) } } catch (_: Exception) { null }
         }
@@ -237,7 +255,11 @@ fun Screen() {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Link-Zentrale", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Link-Zentrale", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                        val total = badges.values.sum()
+                        if (total > 0) Badge(containerColor = Color(0xFFFF5C8A), modifier = Modifier.padding(start = 8.dp)) { Text("$total neu", color = Color.White) }
+                    }
                     Text(status, color = Color(0xFFA9C3E0), fontSize = 13.sp)
                 }
                 TextButton(onClick = { refresh() }) { Text("↻", fontSize = 26.sp, color = Color(0xFF8FD3FF)) }
@@ -290,7 +312,16 @@ fun Screen() {
             item(key = "h_$proj") {
                 Card(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 4.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF1B4A80))) {
                     Column(Modifier.padding(14.dp)) {
-                        Text("📦 $proj", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        val repoP = repoOf(proj, ls)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("📦 $proj", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            if (repoP != null && proj != "Eigene Links") BadgedBox(badge = {
+                                val n = badges[repoP] ?: 0
+                                if (n > 0) Badge(containerColor = Color(0xFFFF5C8A)) { Text("$n", color = Color.White) }
+                            }) {
+                                OutlinedButton(onClick = { reviews = proj to repoP }) { Text("💬 Bewertungen", color = Color.White) }
+                            }
+                        }
                         if (proj != "Eigene Links") {
                             Text("Test-Link zum Weitergeben – fertige Nachricht mit Anleitung", color = Color(0xFFA9C3E0), fontSize = 13.sp)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
