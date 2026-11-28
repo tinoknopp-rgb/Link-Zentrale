@@ -375,6 +375,7 @@ public class MainForm : Form
     Control BuildTools()
     {
         var s = Stack();
+        s.Controls.Add(BuildAuftrag());
 
         // 1 — Token
         var c1 = Card("1 🔑 Token");
@@ -571,6 +572,108 @@ public class MainForm : Form
         s.Controls.Add(c8);
         return s;
     }
+
+    // ---------- Auftrag von Claude: EIN Code-Block → alles automatisch in die richtigen Masken ----------
+    readonly FlowLayoutPanel auftragPanel = Stack();
+
+    Control BuildAuftrag()
+    {
+        var c = Card("📥 Auftrag von Claude");
+        c.Controls.Add(Lbl("Claude schreibt dir einen Code-Block (beginnt mit LZ-AUFTRAG). Komplett kopieren, hier einfügen – die App trägt alles selbst in die richtigen Masken ein.", 9, false, SOFT));
+        var tb = new TextBox
+        {
+            Multiline = true, ScrollBars = ScrollBars.Vertical, Width = W - 30, Height = 110, BackColor = INPUT, ForeColor = Color.White,
+            BorderStyle = BorderStyle.FixedSingle, Font = new Font("Consolas", 9), Margin = new Padding(3), PlaceholderText = Tr.T("… oder hier einfügen (Strg+V)"), MaxLength = 0
+        };
+        Plan? plan = null;
+        var btnVault = Btn($"🔐 Tresor leeren ({Store.VaultCount})", () => { }, PINK);
+        void Check()
+        {
+            auftragPanel.Controls.Clear(); plan = null;
+            if (tb.Text.Trim() == "") return;
+            try
+            {
+                plan = Auftrag.Parse(tb.Text, Gh.USER);
+                auftragPanel.Controls.Add(Lbl($"„{plan.Titel}“ – {plan.Schritte.Count} Schritte:", 10, true));
+                for (int i = 0; i < plan.Schritte.Count; i++) auftragPanel.Controls.Add(Lbl($"{i + 1}. {Auftrag.Describe(plan.Schritte[i])}", 9));
+                SetStatus("✅ Auftrag erkannt – jetzt ▶ Ausführen");
+            }
+            catch (Exception e) { auftragPanel.Controls.Add(Lbl("❌ " + e.Message, 10, false, PINK)); }
+        }
+        async Task Go()
+        {
+            if (plan == null) Check();
+            if (plan == null) return;
+            var p = plan;
+            if (Gh.Token == "") { SetStatus("❌ Zuerst Token eintragen (Maske 1)", true); return; }
+            var warn = Auftrag.Warnings(p);
+            if (warn.Count > 0 && !Ask("Diese Schritte lassen sich nicht einfach rückgängig machen:\n" + string.Join("\n", warn.Select(w => "• " + w)) + "\n\nWirklich ausführen?")) return;
+            foreach (var n in Auftrag.Needs(p).Where(n => Store.Vault(n) == ""))
+            {
+                var v = Prompt("Wert für den Auftrag", $"Wert für {n} (wird verschlüsselt gemerkt):", true);
+                if (string.IsNullOrEmpty(v)) { SetStatus("❌ Auftrag abgebrochen – Wert fehlt", true); return; }
+                Store.SetVault(n, v);
+            }
+            btnVault.Text = Tr.T($"🔐 Tresor leeren ({Store.VaultCount})");
+            auftragPanel.Controls.Clear();
+            UseWaitCursor = true;
+            var ok = true;
+            for (int i = 0; i < p.Schritte.Count && ok; i++)
+            {
+                var st = p.Schritte[i]; var nr = $"{i + 1}/{p.Schritte.Count}";
+                SetStatus($"⏳ {nr} {Auftrag.Describe(st)}");
+                try { auftragPanel.Controls.Add(Lbl($"{nr} {await Step(st)}", 9)); }
+                catch (Exception e) { auftragPanel.Controls.Add(Lbl($"❌ {nr} {Auftrag.Describe(st)}: {e.Message}", 9, false, PINK)); ok = false; }
+            }
+            UseWaitCursor = false;
+            SetStatus(ok ? $"✅ Auftrag „{p.Titel}“ erledigt" : "❌ Auftrag abgebrochen – siehe Liste", !ok);
+            if (ok) await LoadRepos();
+        }
+        async Task<string> Step(Schritt st)
+        {
+            switch (st.Aktion)
+            {
+                case "repo":
+                    return await Gh.Exists(st.Repo) ? $"ℹ️ Repo {Auftrag.Short(st.Repo)} gibt es schon"
+                        : await Gh.CreateRepo(Auftrag.Short(st.Repo), st.S("beschreibung"), st.B("oeffentlich") != true);
+                case "dateien": var m = st.S("nachricht"); return await Gh.CommitFiles(await Gh.RepoOf(st.Repo), m == "" ? "Auftrag aus der Link-Zentrale" : m, st.Dateien);
+                case "ordner": return await Gh.CreateFolder(await Gh.RepoOf(st.Repo), st.S("pfad"));
+                case "secret":
+                    var w = st.S("wert"); var rf = Auftrag.Ref(w);
+                    var v = rf == null ? w : rf.Equals("token", StringComparison.OrdinalIgnoreCase) ? Gh.Token : Store.Vault(rf);
+                    if (v == "") throw new Exception("Wert fehlt");
+                    return await Gh.SetSecret(await Gh.RepoOf(st.Repo), st.S("name").ToUpperInvariant(), v);
+                case "einstellungen": return await Gh.PatchMeta(await Gh.RepoOf(st.Repo), st);
+                case "build":
+                    var r = await Gh.RepoOf(st.Repo);
+                    try { return await Gh.Build(r); } catch { await Task.Delay(6000); return await Gh.Build(r); }   // neuer Workflow braucht kurz
+                case "neueste": { var rr = await Gh.RepoOf(st.Repo); return await Gh.MakeLatest(rr, await Gh.RelByTag(rr, st.S("tag"))); }
+                case "version_loeschen": { var rr = await Gh.RepoOf(st.Repo); return await Gh.DeleteRelease(rr, await Gh.RelByTag(rr, st.S("tag"))); }
+                case "text":
+                    var t = st.S("titel"); var txt = st.S("text"); var u = st.S("url");
+                    var row = Row(Lbl("📝 " + t, 10, true));
+                    if (txt != "") row.Controls.Add(Btn("📋 Kopieren", () => Copy(txt), BLUE));
+                    if (u != "") row.Controls.Add(Btn("↗ Öffnen", () => Open(u), SOFT));
+                    auftragPanel.Controls.Add(row);
+                    return $"📝 {t} – Knöpfe oben: kopieren/öffnen";
+                default: throw new Exception("unbekannt");
+            }
+        }
+        tb.TextChanged += (_, _) => Check();
+        btnVault.Click += (_, _) => { if (Ask("Alle gemerkten Auftrags-Werte löschen?")) { Store.ClearVault(); btnVault.Text = Tr.T("🔐 Tresor leeren (0)"); } };
+        c.Controls.Add(Row(
+            Btn("📋 Aus Zwischenablage einfügen", () => { try { tb.Text = Clipboard.GetText(); } catch { SetStatus("❌ Zwischenablage belegt – nochmal versuchen", true); } }, PINK),
+            Btn("▶ Ausführen", async () => await Go())));
+        c.Controls.Add(tb);
+        c.Controls.Add(auftragPanel);
+        c.Controls.Add(Row(
+            Btn("📋 Satz für Claude", () => Copy(AuftragVorlage()), SOFT),
+            btnVault));
+        return c;
+    }
+
+    static string AuftragVorlage() => "Bitte gib mir Änderungen an GitHub immer als EINEN Code-Block „LZ-AUFTRAG“ für meine Link-Zentrale " +
+        $"(Format: https://github.com/{Gh.USER}/Link-Zentrale/blob/main/AUFTRAG.md). Ich kopiere ihn komplett und füge ihn in der Link-Zentrale unter 📥 Auftrag ein.";
 
     async Task LoadRepos()
     {

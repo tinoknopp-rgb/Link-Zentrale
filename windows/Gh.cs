@@ -60,6 +60,22 @@ public static class Store
         set { Directory.CreateDirectory(Dir); File.WriteAllText(F("owner.txt"), value.Trim().Replace("https://github.com/", "").Trim('/')); }
     }
 
+    /// <summary>Tresor für Aufträge: Secret-Werte (z. B. KEYSTORE_B64) einmal eingeben, danach automatisch (Windows-Schutz)</summary>
+    static Dictionary<string, string> VaultAll()
+    {
+        try { return JsonSerializer.Deserialize<Dictionary<string, string>>(Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(F("vault.bin")), null, DataProtectionScope.CurrentUser))) ?? new(); }
+        catch { return new(); }
+    }
+    public static string Vault(string name) => VaultAll().GetValueOrDefault(name.ToUpperInvariant(), "");
+    public static void SetVault(string name, string value)
+    {
+        var d = VaultAll(); d[name.ToUpperInvariant()] = value;
+        Directory.CreateDirectory(Dir);
+        File.WriteAllBytes(F("vault.bin"), ProtectedData.Protect(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(d)), null, DataProtectionScope.CurrentUser));
+    }
+    public static int VaultCount => VaultAll().Count;
+    public static void ClearVault() { try { File.Delete(F("vault.bin")); } catch { } }
+
     public static List<Link> Load(string name)
     {
         try { return JsonSerializer.Deserialize<List<Link>>(File.ReadAllText(F(name))) ?? new(); } catch { return new(); }
@@ -410,6 +426,66 @@ public static class Gh
         Need(await Call("PUT", $"/repos/{r.Full}/topics", new JsonObject { ["names"] = arr }), "Themen speichern");
         return $"✅ {r.Name}: " + (priv ? "🔒 privat" : "🌍 öffentlich") + $" • {topics.Count} Themen";
     }
+
+    // ---------------- Für Aufträge von Claude ----------------
+    public static async Task<bool> Exists(string full) => (await Call("GET", $"/repos/{full}")).Code == 200;
+
+    public static async Task<Repo> RepoOf(string full)
+    {
+        var o = J(Need(await Call("GET", $"/repos/{full}"), $"Repo {full} lesen"));
+        return new Repo(o["full_name"]!.ToString(), o["name"]!.ToString(), o["private"]!.GetValue<bool>(), o["default_branch"]?.ToString() ?? "main", o["html_url"]!.ToString());
+    }
+
+    /// <summary>Viele Dateien in EINEM Commit (ein Build statt vieler)</summary>
+    public static async Task<string> CommitFiles(Repo r, string msg, List<Datei> files)
+    {
+        var refR = await Call("GET", $"/repos/{r.Full}/git/ref/heads/{r.Branch}");
+        if (refR.Code is < 200 or >= 300)   // ganz leeres Repo: Datei für Datei
+        {
+            foreach (var f in files.Where(f => !f.Loeschen))
+            {
+                var bytes = f.Base64 != null ? Convert.FromBase64String(f.Base64) : Encoding.UTF8.GetBytes(f.Inhalt ?? "");
+                var i = f.Pfad.LastIndexOf('/');
+                await UploadFile(r, i < 0 ? "" : f.Pfad[..i], i < 0 ? f.Pfad : f.Pfad[(i + 1)..], bytes);
+            }
+            return $"✅ {files.Count} Datei(en) in {r.Name} gespeichert";
+        }
+        var head = J(refR)["object"]!["sha"]!.ToString();
+        var tree = J(Need(await Call("GET", $"/repos/{r.Full}/git/commits/{head}"), "Commit lesen"))["tree"]!["sha"]!.ToString();
+        var entries = new JsonArray();
+        foreach (var f in files)
+        {
+            var e = new JsonObject { ["path"] = f.Pfad, ["mode"] = f.Mode, ["type"] = "blob" };
+            if (f.Loeschen) e["sha"] = null;
+            else if (f.Base64 != null)
+                e["sha"] = J(Need(await Call("POST", $"/repos/{r.Full}/git/blobs", new JsonObject { ["content"] = f.Base64, ["encoding"] = "base64" }), $"Datei {f.Pfad}"))["sha"]!.ToString();
+            else e["content"] = f.Inhalt ?? "";
+            entries.Add(e);
+        }
+        var newTree = J(Need(await Call("POST", $"/repos/{r.Full}/git/trees", new JsonObject { ["base_tree"] = tree, ["tree"] = entries }), "Dateien vorbereiten"))["sha"]!.ToString();
+        var commit = J(Need(await Call("POST", $"/repos/{r.Full}/git/commits", new JsonObject { ["message"] = msg, ["tree"] = newTree, ["parents"] = new JsonArray(head) }), "Commit"))["sha"]!.ToString();
+        Need(await Call("PATCH", $"/repos/{r.Full}/git/refs/heads/{r.Branch}", new JsonObject { ["sha"] = commit }), "Speichern");
+        return $"✅ {files.Count} Datei(en) in {r.Name} gespeichert (1 Commit)";
+    }
+
+    /// <summary>Nur die angegebenen Einstellungen ändern</summary>
+    public static async Task<string> PatchMeta(Repo r, Schritt s)
+    {
+        var p = new JsonObject();
+        if (s.B("oeffentlich") is bool pub) p["private"] = !pub;
+        if (s.Has("beschreibung")) p["description"] = s.S("beschreibung");
+        if (s.Has("webseite")) p["homepage"] = s.S("webseite");
+        if (p.Count > 0) Need(await Call("PATCH", $"/repos/{r.Full}", p), "Einstellungen speichern");
+        if (s.O["themen"] is JsonArray th)
+        {
+            var arr = new JsonArray(); foreach (var t in th) arr.Add(t?.ToString());
+            Need(await Call("PUT", $"/repos/{r.Full}/topics", new JsonObject { ["names"] = arr }), "Themen speichern");
+        }
+        return $"✅ Einstellungen von {r.Name} gespeichert";
+    }
+
+    public static async Task<Rel> RelByTag(Repo r, string tag) =>
+        (await Releases(r)).FirstOrDefault(x => x.Tag == tag) ?? throw new Exception($"Version {tag} in {r.Name} nicht gefunden");
 
     public static async Task<string> DeleteRelease(Repo r, Rel v)
     {

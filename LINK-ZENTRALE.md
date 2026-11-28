@@ -77,3 +77,12 @@ Jeder Chat darf die Link-Zentrale für **sein** Projekt verbessern. Zwei Wege:
 4. Neue Texte auch in `en.json` eintragen.
 5. Commit-Nachricht beginnt mit `[Projektname]`, Push auf `main`.
 6. Der Build führt die Tests aus, baut Handy (Release) + PC und veröffentlicht automatisch `v1.N` im Repo `Link-Zentrale-Updates` – alle Link-Zentralen aktualisieren sich selbst. Build in Actions muss ✅ sein, sonst sofort reparieren.
+
+---
+
+## D) 📥 Auftrag von Claude – ein Code-Block statt Zeile für Zeile
+
+Alles, was auf GitHub passieren soll (Repo anlegen, Dateien/Code ändern, Secrets, Builds, Versionen, öffentlich machen, Texte für andere Seiten),
+gibt Claude als **einen** Code-Block `LZ-AUFTRAG` aus. Der Nutzer kopiert ihn komplett →
+Link-Zentrale → 🛠 Werkzeuge → **📥 Auftrag von Claude** → „Aus Zwischenablage einfügen“ → **▶ Ausführen**.
+Die App erkennt selbst die richtigen Masken. Format und Regeln: **[AUFTRAG.md](AUFTRAG.md)**.

@@ -7,4 +7,5 @@
 - Projekt-eigene Funktionen nur mit Bedingung auf den Projektnamen – nichts für andere Projekte kaputt machen.
 - Commit-Nachricht beginnt mit `[Projektname]`, Push auf `main`. Build (Actions) muss ✅ sein, sonst sofort reparieren.
 - Danach die geänderten Dateien im Claude-Projekt unter `link-zentrale-code/…` aktualisieren (Spiegel für alle Chats, siehe `link-zentrale-code/README.md`).
+- Änderungen für den Nutzer immer als EIN `LZ-AUFTRAG`-Block ausgeben (Format: `AUFTRAG.md`), nie Zeile für Zeile.
 - Ohne Code-Änderung: `link-zentrale.json` ins öffentliche Update-Repo des Projekts (siehe `LINK-ZENTRALE.md`, Teil C).

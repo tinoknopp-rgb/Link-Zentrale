@@ -56,6 +56,7 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")   // echtes org.json für Auftrag-Tests
     implementation("com.goterl:lazysodium-android:5.1.0@aar")
     implementation("net.java.dev.jna:jna:5.14.0@aar")
 }

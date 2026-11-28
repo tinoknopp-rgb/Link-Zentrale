@@ -229,6 +229,57 @@ object Api {
         call("DELETE", "/repos/${r.full}/git/refs/tags/${rel.tag}")
         return "🗑 ${rel.name} gelöscht"
     }
+
+    // ---------- Für Aufträge von Claude ----------
+    fun exists(full: String) = call("GET", "/repos/$full").code == 200
+
+    fun repoOf(full: String): Repo {
+        val o = JSONObject(need(call("GET", "/repos/$full"), "Repo $full lesen").body)
+        return Repo(o.getString("full_name"), o.getString("name"), o.optBoolean("private"), o.optString("default_branch", "main"), o.getString("html_url"))
+    }
+
+    /** Viele Dateien in EINEM Commit (ein Build statt vieler) */
+    fun commitFiles(r: Repo, msg: String, files: List<Auftrag.Datei>): String {
+        val ref = call("GET", "/repos/${r.full}/git/ref/heads/${r.branch}")
+        if (ref.code !in 200..299) {   // ganz leeres Repo: Datei für Datei
+            files.filter { !it.loeschen }.forEach { f ->
+                val bytes = f.base64?.let { Base64.decode(it, Base64.DEFAULT) } ?: (f.inhalt ?: "").toByteArray()
+                uploadFile(r, f.pfad.substringBeforeLast('/', ""), f.pfad.substringAfterLast('/'), bytes)
+            }
+            return "✅ ${files.size} Datei(en) in ${r.name} gespeichert"
+        }
+        val head = JSONObject(ref.body).getJSONObject("object").getString("sha")
+        val tree = JSONObject(need(call("GET", "/repos/${r.full}/git/commits/$head"), "Commit lesen").body).getJSONObject("tree").getString("sha")
+        val entries = JSONArray()
+        files.forEach { f ->
+            val e = JSONObject().put("path", f.pfad).put("mode", f.mode).put("type", "blob")
+            when {
+                f.loeschen -> e.put("sha", JSONObject.NULL)
+                f.base64 != null -> e.put("sha", JSONObject(need(call("POST", "/repos/${r.full}/git/blobs",
+                    JSONObject().put("content", f.base64).put("encoding", "base64")), "Datei ${f.pfad}").body).getString("sha"))
+                else -> e.put("content", f.inhalt ?: "")
+            }
+            entries.put(e)
+        }
+        val newTree = JSONObject(need(call("POST", "/repos/${r.full}/git/trees", JSONObject().put("base_tree", tree).put("tree", entries)), "Dateien vorbereiten").body).getString("sha")
+        val commit = JSONObject(need(call("POST", "/repos/${r.full}/git/commits", JSONObject()
+            .put("message", msg).put("tree", newTree).put("parents", JSONArray().put(head))), "Commit").body).getString("sha")
+        need(call("PATCH", "/repos/${r.full}/git/refs/heads/${r.branch}", JSONObject().put("sha", commit)), "Speichern")
+        return "✅ ${files.size} Datei(en) in ${r.name} gespeichert (1 Commit)"
+    }
+
+    /** Nur die angegebenen Einstellungen ändern */
+    fun patchMeta(r: Repo, s: Auftrag.Schritt): String {
+        val p = JSONObject()
+        s.b("oeffentlich")?.let { p.put("private", !it) }
+        if (s.o.has("beschreibung")) p.put("description", s.s("beschreibung"))
+        if (s.o.has("webseite")) p.put("homepage", s.s("webseite"))
+        if (p.length() > 0) need(call("PATCH", "/repos/${r.full}", p), "Einstellungen speichern")
+        s.o.optJSONArray("themen")?.let { need(call("PUT", "/repos/${r.full}/topics", JSONObject().put("names", it)), "Themen speichern") }
+        return "✅ Einstellungen von ${r.name} gespeichert"
+    }
+
+    fun relByTag(r: Repo, tag: String) = releases(r).firstOrNull { it.tag == tag } ?: throw Exception("Version $tag in ${r.name} nicht gefunden")
 }
 
 /** Nur so viele Rechte wie nötig: Repos + Builds. „delete_repo“ nur wer Repos löschen will (Maske 10). */
@@ -243,7 +294,7 @@ private val BLUE = Color(0xFF8FD3FF)
 private val PINK = Color(0xFFFF5C8A)
 
 @Composable
-private fun Section(title: String, content: @Composable ColumnScope.() -> Unit) {
+internal fun Section(title: String, content: @Composable ColumnScope.() -> Unit) {
     Card(Modifier.fillMaxWidth().padding(vertical = 6.dp), colors = CardDefaults.cardColors(containerColor = CARD)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
@@ -253,13 +304,13 @@ private fun Section(title: String, content: @Composable ColumnScope.() -> Unit) 
 }
 
 @Composable
-private fun Btn(text: String, color: Color = BLUE, modifier: Modifier = Modifier.fillMaxWidth(), onClick: () -> Unit) =
+internal fun Btn(text: String, color: Color = BLUE, modifier: Modifier = Modifier.fillMaxWidth(), onClick: () -> Unit) =
     Button(onClick, modifier.heightIn(min = 48.dp), colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = Color(0xFF0A2540))) {
         Text(text, fontWeight = FontWeight.SemiBold)
     }
 
 @Composable
-private fun Field(value: String, label: String, secret: Boolean = false, onChange: (String) -> Unit) =
+internal fun Field(value: String, label: String, secret: Boolean = false, onChange: (String) -> Unit) =
     OutlinedTextField(value, onChange, label = { Text(label) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
         visualTransformation = if (secret) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None)
 
@@ -315,6 +366,9 @@ fun ToolsScreen(onBack: () -> Unit) {
             Text("Werkzeuge", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         }
         Text(status, color = if (status.startsWith("❌")) PINK else SOFT, fontSize = 14.sp, modifier = Modifier.padding(bottom = 6.dp))
+
+        // Auftrag von Claude: ein Code-Block → alles automatisch in die richtigen Masken
+        AuftragSection { status = it; if (it.startsWith("✅ Auftrag")) loadRepos() }
 
         // 1 — Token
         Section("1 🔑 Token") {
