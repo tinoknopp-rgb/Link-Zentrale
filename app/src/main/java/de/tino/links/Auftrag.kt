@@ -25,6 +25,7 @@ object AuftragRun {
     fun run(p: Auftrag.Plan, token: String, vault: (String) -> String, log: (String) -> Unit, hint: (Hinweis) -> Unit): Boolean {
         p.schritte.forEachIndexed { i, s ->
             val nr = "${i + 1}/${p.schritte.size}"
+            if (i > 0 && s.aktion == "repo") Thread.sleep(3000)   // GitHub sperrt bei vielen neuen Repos in kurzer Zeit
             try { log("$nr ${step(s, token, vault, hint)}") }
             catch (e: Exception) { log("❌ $nr ${Auftrag.describe(s)}: ${e.message}"); return false }
         }

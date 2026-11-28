@@ -122,6 +122,8 @@ public static class Gh
         if (r.Code is >= 200 and < 300) return r;
         string m;
         try { m = JsonNode.Parse(r.Body)?["message"]?.ToString() ?? ""; } catch { m = r.Body.Length > 120 ? r.Body[..120] : r.Body; }
+        if (r.Code is 403 or 429 && m.Contains("rate limit", StringComparison.OrdinalIgnoreCase))
+            throw new Exception($"{what}: GitHub-Sperre – zu viele Aktionen kurz hintereinander. In ca. 1 Stunde denselben Auftrag nochmal ausführen (Fertiges wird übersprungen).");
         var hint = r.Code switch
         {
             401 => " – Token ungültig",

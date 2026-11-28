@@ -59,6 +59,8 @@ object Api {
     fun need(r: R, what: String): R {
         if (r.code in 200..299) return r
         val m = try { JSONObject(r.body).optString("message") } catch (_: Exception) { r.body.take(120) }
+        if ((r.code == 403 || r.code == 429) && m.contains("rate limit", true))
+            throw Exception("$what: GitHub-Sperre – zu viele Aktionen kurz hintereinander. In ca. 1 Stunde denselben Auftrag nochmal ausführen (Fertiges wird übersprungen).")
         throw Exception("$what fehlgeschlagen (${r.code}): $m" + when (r.code) {
             401 -> " – Token ungültig"
             403, 404 -> " – fehlt dem Token ein Haken (repo / workflow / delete_repo)?"

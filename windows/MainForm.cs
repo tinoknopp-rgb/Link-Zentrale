@@ -622,6 +622,7 @@ public class MainForm : Form
             {
                 var st = p.Schritte[i]; var nr = $"{i + 1}/{p.Schritte.Count}";
                 SetStatus($"⏳ {nr} {Auftrag.Describe(st)}");
+                if (i > 0 && st.Aktion == "repo") await Task.Delay(3000);   // GitHub sperrt bei vielen neuen Repos in kurzer Zeit
                 try { auftragPanel.Controls.Add(Lbl($"{nr} {await Step(st)}", 9)); }
                 catch (Exception e) { auftragPanel.Controls.Add(Lbl($"❌ {nr} {Auftrag.Describe(st)}: {e.Message}", 9, false, PINK)); ok = false; }
             }
