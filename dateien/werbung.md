@@ -24,7 +24,7 @@
 Link ist schon in beiden READMEs. Beitrag in r/Obtainium möglich (Text wie Reddit unten, kürzer).
 
 ### IzzyOnDroid (F-Droid-kompatibles Verzeichnis) – Anfrage als Issue
-Ort: https://gitlab.com/IzzyOnDroid/repo/-/issues → „New issue“
+Ort: https://codeberg.org/IzzyOnDroid/repodata/issues/new (Codeberg-Konto nötig, Vorlage „App Request“, Titel `[AppRequest] Link-Zentrale`)
 > **Title:** Request: Link-Zentrale (de.tino.links)
 > **Body:**
 > Source: https://github.com/tinoknopp-rgb/Link-Zentrale
@@ -105,6 +105,13 @@ Passende Listen: `awesome-android-apps` (Kategorie Development/Tools), `awesome-
 
 ### Mastodon/X
 > Ich hab die Link-Zentrale veröffentlicht 🔗 GitHub-Releases, Tester-Links mit QR-Code, Bewertungen & Builds – alles in einer App für Android + Windows. Kostenlos & Open Source: https://github.com/tinoknopp-rgb/Link-Zentrale-Updates #Android #GitHub #OpenSource #IndieDev
+
+---
+
+## 3b) Weitere Stellen zum Hochladen
+- **Uptodown:** https://developers.uptodown.com · **APKPure:** https://developer.apkpure.com · **Samsung Galaxy Store:** https://seller.samsungapps.com
+- **winget:** GitHub → Link-Zentrale → Actions → „winget anmelden“ → Run workflow
+- **Datenschutzerklärung:** https://github.com/tinoknopp-rgb/Link-Zentrale-Updates/blob/main/DATENSCHUTZ.md
 
 ---
 

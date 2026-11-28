@@ -1,0 +1,71 @@
+# Meldet die neueste Windows-Version beim Windows-Paketmanager (winget) an.
+# Nur von Hand starten: GitHub → Actions → „winget anmelden“ → Run workflow.
+# Braucht das Secret UPDATE_TOKEN (Token mit Recht „repo“ bzw. „public_repo“).
+name: winget anmelden
+on:
+  workflow_dispatch:
+
+jobs:
+  winget:
+    runs-on: windows-latest
+    steps:
+      - name: Manifest bauen und einreichen
+        shell: pwsh
+        env:
+          TOKEN: ${{ secrets.UPDATE_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          $repo = "$env:OWNER/Link-Zentrale-Updates"
+          $rel = Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest" -Headers @{ "User-Agent" = "winget" }
+          $code = [regex]::Match($rel.tag_name, '(\d+)$').Groups[1].Value
+          $ver = "1.$code"
+          $url = "https://github.com/$repo/releases/download/$($rel.tag_name)/Link-Zentrale.exe"
+          Invoke-WebRequest $url -OutFile app.exe
+          $sha = (Get-FileHash app.exe -Algorithm SHA256).Hash
+          $id = "$env:OWNER.Link-Zentrale"
+          $dir = "m"; New-Item -ItemType Directory $dir | Out-Null
+          @"
+          PackageIdentifier: $id
+          PackageVersion: $ver
+          DefaultLocale: de-DE
+          ManifestType: version
+          ManifestVersion: 1.6.0
+          "@ | Set-Content "$dir/$id.yaml" -Encoding utf8
+          @"
+          PackageIdentifier: $id
+          PackageVersion: $ver
+          InstallerType: portable
+          Commands:
+          - link-zentrale
+          Installers:
+          - Architecture: x64
+            InstallerUrl: $url
+            InstallerSha256: $sha
+          ManifestType: installer
+          ManifestVersion: 1.6.0
+          "@ | Set-Content "$dir/$id.installer.yaml" -Encoding utf8
+          @"
+          PackageIdentifier: $id
+          PackageVersion: $ver
+          PackageLocale: de-DE
+          Publisher: $env:OWNER
+          PublisherUrl: https://github.com/$env:OWNER
+          PackageName: Link-Zentrale
+          PackageUrl: https://github.com/$env:OWNER/Link-Zentrale
+          License: MIT
+          LicenseUrl: https://github.com/$env:OWNER/Link-Zentrale/blob/main/LICENSE
+          PrivacyUrl: https://github.com/$repo/blob/main/DATENSCHUTZ.md
+          ShortDescription: GitHub-Releases, Tester und Bewertungen in einer App
+          Description: Zeigt alle GitHub-Releases eines Kontos mit Test-Links, QR-Codes, Bewertungen (Issues), Downloads und Build-Status; mit eigenem Token Repos, Secrets, Builds und Releases verwalten.
+          Tags:
+          - github
+          - releases
+          - developer-tools
+          - beta-testing
+          ReleaseNotesUrl: https://github.com/$repo/releases/tag/$($rel.tag_name)
+          ManifestType: defaultLocale
+          ManifestVersion: 1.6.0
+          "@ | Set-Content "$dir/$id.locale.de-DE.yaml" -Encoding utf8
+          Get-ChildItem $dir | ForEach-Object { "---- $($_.Name)"; Get-Content $_ }
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          .\wingetcreate.exe submit --token $env:TOKEN $dir
