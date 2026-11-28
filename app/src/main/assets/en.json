@@ -256,5 +256,8 @@
 "Datei(en)": "file(s)",
 "als neueste Version": "as latest version",
 "Tresor geleert": "Vault cleared",
-"Kopieren": "Copy"
+"Kopieren": "Copy",
+"🔐 Tresor leer": "🔐 Vault empty",
+"ℹ️ Tresor ist leer – es ist nichts gespeichert": "ℹ️ Vault is empty – nothing stored",
+"Im Tresor merkt sich die App Werte wie KEYSTORE_B64, die ein Auftrag mit „@NAME“ braucht. Er füllt sich erst, wenn ein Auftrag danach fragt.": "The vault keeps values like KEYSTORE_B64 that a task needs via “@NAME”. It only fills up when a task asks for one."
 }

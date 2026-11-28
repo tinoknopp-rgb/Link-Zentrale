@@ -72,6 +72,7 @@ fun AuftragSection(status: (String) -> Unit) {
     val log = remember { mutableStateListOf<String>() }
     val hints = remember { mutableStateListOf<AuftragRun.Hinweis>() }
     var vaultCount by remember { mutableStateOf(Sec.vaultNames(ctx).size) }
+    var vaultMsg by remember { mutableStateOf("") }
 
     fun check(t: String) {
         raw = t; log.clear(); hints.clear(); missing.clear()
@@ -133,10 +134,17 @@ fun AuftragSection(status: (String) -> Unit) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { copy(ctx, auftragVorlage()) }, modifier = Modifier.weight(1f)) { Text("📋 Satz für Claude", color = A_BLUE, fontSize = 12.sp) }
-            OutlinedButton(onClick = { Sec.clearVault(ctx); vaultCount = 0; status("🔐 Tresor geleert") }, modifier = Modifier.weight(1f)) {
-                Text("🔐 Tresor leeren ($vaultCount)", color = A_PINK, fontSize = 12.sp)
+            OutlinedButton(onClick = {
+                val n = Sec.vaultNames(ctx).size
+                if (n == 0) vaultMsg = "ℹ️ Tresor ist leer – es ist nichts gespeichert"
+                else { Sec.clearVault(ctx); vaultMsg = "✅ Tresor geleert ($n Werte gelöscht)"; status(vaultMsg) }
+                vaultCount = Sec.vaultNames(ctx).size
+            }, modifier = Modifier.weight(1f)) {
+                Text(if (vaultCount == 0) "🔐 Tresor leer" else "🔐 Tresor leeren ($vaultCount)", color = A_PINK, fontSize = 12.sp)
             }
         }
+        if (vaultMsg.isNotEmpty()) Text(vaultMsg, color = A_SOFT, fontSize = 13.sp)
+        Text("Im Tresor merkt sich die App Werte wie KEYSTORE_B64, die ein Auftrag mit „@NAME“ braucht. Er füllt sich erst, wenn ein Auftrag danach fragt.", color = A_SOFT, fontSize = 12.sp)
     }
 
     if (ask) plan?.let { p ->

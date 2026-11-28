@@ -661,7 +661,15 @@ public class MainForm : Form
             }
         }
         tb.TextChanged += (_, _) => Check();
-        btnVault.Click += (_, _) => { if (Ask("Alle gemerkten Auftrags-Werte löschen?")) { Store.ClearVault(); btnVault.Text = Tr.T("🔐 Tresor leeren (0)"); } };
+        btnVault.Click += (_, _) =>
+        {
+            var n = Store.VaultCount;
+            if (n == 0) { SetStatus("ℹ️ Tresor ist leer – es ist nichts gespeichert"); return; }
+            if (!Ask("Alle gemerkten Auftrags-Werte löschen?")) return;
+            Store.ClearVault();
+            SetStatus(Store.VaultCount == 0 ? $"✅ Tresor geleert ({n} Werte gelöscht)" : "❌ Tresor konnte nicht geleert werden", Store.VaultCount != 0);
+            btnVault.Text = Tr.T($"🔐 Tresor leeren ({Store.VaultCount})");
+        };
         c.Controls.Add(Row(
             Btn("📋 Aus Zwischenablage einfügen", () => { try { tb.Text = Clipboard.GetText(); } catch { SetStatus("❌ Zwischenablage belegt – nochmal versuchen", true); } }, PINK),
             Btn("▶ Ausführen", async () => await Go())));

@@ -64,7 +64,7 @@ object Sec {
     fun vault(c: Context, name: String): String = p(c).getString("v_" + name.uppercase(), "") ?: ""
     fun setVault(c: Context, name: String, v: String) { p(c).edit().putString("v_" + name.uppercase(), v).apply() }
     fun vaultNames(c: Context): List<String> = p(c).all.keys.filter { it.startsWith("v_") }.map { it.removePrefix("v_") }.sorted()
-    fun clearVault(c: Context) { p(c).edit().apply { p(c).all.keys.filter { it.startsWith("v_") }.forEach { remove(it) } }.apply() }
+    fun clearVault(c: Context) { val keys = p(c).all.keys.filter { it.startsWith("v_") }; p(c).edit().apply { keys.forEach { remove(it) } }.commit() }
 }
 
 /** Erster Start: Konto wählen */
